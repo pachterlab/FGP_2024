@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 eps = 1e-6
 omega = -1e6
 
-def get_Y(theta, t, tau):
+def get_Y_ori(theta, t, tau):
     # theta: p*(K+4)
     # t: len m
     # tau: len K+1
@@ -50,11 +50,9 @@ def get_Y(theta, t, tau):
     m = len(t)
   
     I = np.ones((K+1,m),dtype=bool)
-    y1 =np.zeros((m,p))
-    y =np.zeros((m,p))
 
     # nascent
-    y1=y1+y1_0[None,:]*np.exp(-beta[None,:]*t)   
+    y1=y1_0[None,:]*np.exp(-beta[None,:]*t)  
     for k in range(1,K+1):
         I[k] = np.squeeze(t > tau[k])
         idx =I[k-1]*(~I[k]) # tau_{k-1} < t_i <= tau_k
@@ -64,13 +62,13 @@ def get_Y(theta, t, tau):
     if np.sum(np.isnan(y1)) != 0:
         raise ValueError("Nan in y1")
     # mature + c * nascent 
-    y=y+y_0[None,:]*np.exp(-gamma[None,:]*t)    
+    y=y_0[None,:]*np.exp(-gamma[None,:]*t)    
     for k in range(1,K+1):
         idx =I[k-1]*(~I[k]) # tau_{k-1} < t_i <= tau_k
         y = y + a_[None,:,k-1] * (np.exp(-gamma[None,:]*I[k,:,None] * (t-tau[k]))- np.exp(-gamma[None,:]*I[k,:,None] * (t-tau[k-1])) ) \
           +  a_[None,:,k-1] * (1 - np.exp(-gamma[None,:]*idx[:,None]*(t-tau[k-1]))) 
 
-    Y =np.zeros((m,p,2))
+    Y = np.zeros((m,p,2))
     Y[:,:,0] = y1
     Y[:,:,1] = y-c*y1
     
@@ -79,6 +77,61 @@ def get_Y(theta, t, tau):
     if np.sum(np.isnan(Y)) != 0:
         raise ValueError("Nan in Y")
     return Y
+
+
+def get_Y(theta, t, tau):
+    # theta: p*(K+4)
+    # t: len m
+    # tau: len K+1
+    # return m * p * 2
+    p = len(theta)
+    K = len(tau)-1 # number of states
+    if np.shape(theta)[1]!=K+4:
+        print(np.shape(theta)[1], K+4)
+        raise TypeError("wrong parameters lengths")
+    a = theta[:,0:K].T
+    beta = theta[:,-2].reshape((1,-1))
+    gamma = theta[:,-1].reshape((1,-1))
+
+    y1_0 = theta[:,-4].reshape((1,-1))
+    y2_0 = theta[:,-3].reshape((1,-1))
+
+    c = beta/(beta-gamma+eps)
+    d = beta**2/((beta-gamma)*gamma+eps)
+    y_0 = y2_0 + c*y1_0
+    a_ = d*a
+    t = t.reshape(-1,1)
+    m = len(t)
+  
+    I = np.ones((K+1,m),dtype=bool)
+
+    # nascent
+    y1=y1_0*np.exp(-t@beta)
+    for k in range(1,K+1):
+        I[k] = np.squeeze(t > tau[k])
+        idx =I[k-1]*(~I[k]) # tau_{k-1} < t_i <= tau_k
+        y1 = y1 + a[None,k-1] * (np.exp(- (I[k,:,None] *(t-tau[k]))@beta)- np.exp(-(I[k,:,None]*(t-tau[k-1]))@beta )) \
+          + a[None,k-1] * (1 - np.exp(- (idx[:,None] *(t-tau[k-1]))@beta ) )
+    
+    if np.sum(np.isnan(y1)) != 0:
+        raise ValueError("Nan in y1")
+    # mature + c * nascent 
+    y=y_0*np.exp(-t@gamma)    
+    for k in range(1,K+1):
+        idx =I[k-1]*(~I[k]) # tau_{k-1} < t_i <= tau_k
+        y = y + a_[None,k-1] * (np.exp(-(I[k,:,None] * (t-tau[k]))@gamma)- np.exp(-(I[k,:,None] * (t-tau[k-1]))@gamma )) \
+          +  a_[None,k-1] * (1 - np.exp(-(idx[:,None]*(t-tau[k-1]))@gamma) )
+
+    Y = np.zeros((m,p,2))
+    Y[:,:,0] = y1
+    Y[:,:,1] = y-c*y1
+    
+    Y[Y<0]=0
+    
+    if np.sum(np.isnan(Y)) != 0:
+        raise ValueError("Nan in Y")
+    return Y
+
 
 def get_Y2(theta, t, tau):
     # theta: p*(K+4)
@@ -190,9 +243,9 @@ def neglogL_a(theta_a,theta_bg,x,Q,t,tau,topo,penalty):
     loss = neglogL(theta,x,Q,t,tau,topo,penalty)
     return loss
 
-def minimize_wrapper(theta0, x, Q, t, tau, topo, penalty, alternative, bnd, miter = 100000, alteriter = 20):
+def update_theta_j(theta0, x, Q, t, tau, topo, penalty, alternative, bnd=1000, bnd_beta=100, miter = 100000, alteriter = 20):
     bounds = [[0,bnd]]*len(theta0)
-    bounds[-2:] = [[1/bnd,bnd]]*2
+    bounds[-2:] = [[1/bnd_beta,bnd_beta]]*2
     if alternative:
         new_theta = theta0.copy()
         for i in range(alteriter):
@@ -207,27 +260,18 @@ def minimize_wrapper(theta0, x, Q, t, tau, topo, penalty, alternative, bnd, mite
         new_theta = res.x
     return new_theta
 
-def update_theta(X,weight,theta_G,penalty=0,alternative=False,parallel=False,n_threads=1,theta0=None, bnd=1000):
+def update_theta(X,weight,theta_G,penalty=0,alternative=False,parallel=False,n_threads=1,theta0=None, bnd=1000, bnd_beta=100):
     """
     beta and gamma can not be equal
     """
-    
-    if type(theta_G) is dict:
-        n,L,m = np.shape(weight)
-        Q = weight.copy()
-        tau = theta_G["tau"]
-        topo = theta_G["topo"]
-        
-    else:       
-        n,m = np.shape(weight)
-        Q = weight.copy()
-        Q = Q[:,None,:]
-        tau = theta_G
-        topo = np.array([np.arange(len(tau)-1)])
+    n,L,m = np.shape(weight)
+    Q = weight.copy()
+    tau = theta_G["tau"]
+    topo = theta_G["topo"]
         
     n,p,s=np.shape(X)
     if s!=2:
-      raise TypeError("wrong parameters lengths")
+        raise TypeError("wrong parameters lengths")
     
     t=np.linspace(0,1,m)
     n_states=len(set(topo.flatten()))
@@ -240,49 +284,41 @@ def update_theta(X,weight,theta_G,penalty=0,alternative=False,parallel=False,n_t
 
     if parallel is True:
         Input_args = []
-        for i in range(p):
-            Input_args.append((theta0[i], X[:,i], Q, t, tau, topo, penalty, alternative, bnd))
+        for j in range(p):
+            Input_args.append((theta0[j], X[:,j], Q, t, tau, topo, penalty, alternative, bnd, bnd_beta))
         with Pool(n_threads) as pool:      
-            theta_hat = pool.starmap(minimize_wrapper, Input_args)
+            theta_hat = pool.starmap(update_theta_j, Input_args)
         theta_hat = np.array(theta_hat)
     else:
         theta_hat = np.zeros((p,n_states+4))
-        for i in range(p): 
-            theta_hat[i]=minimize_wrapper(theta0[i], X[:,i], Q, t, tau, topo, penalty, alternative, bnd)
+        for j in range(p): 
+            theta_hat[i]=update_theta_j(theta0[j], X[:,j], Q, t, tau, topo, penalty, alternative, bnd)
     return theta_hat
 
 def update_weight(X,theta,theta_G,m):
+    """
+    return 3D array posterior Q
+    """
     n,p,s=np.shape(X)
-    t=np.linspace(0,1,m)
-    if type(theta_G) is not dict:
-        tau = theta_G
-        Y = get_Y(theta,t,tau) # m*p*2
-        logL = np.sum(X[:,None,:,:] * np.log(Y[None,:]+eps) - Y[None,:], axis=(-2,-1)) # n*m*p*2 -> n*m
-        Q = softmax(logL, axis=(-1))
-    else:
-        tau = theta_G["tau"]
-        topo = theta_G["topo"]
-        Y = np.zeros((L,m,p,2))
-        for l in range(L):
-            theta_l = np.concatenate((theta[:,topo[l]], theta[:,-4:]), axis=1)
-            Y[l] = get_Y(theta_l,t,tau) # m*p*2
-        logL =  np.sum(X[:,None,None,:,:] * np.log(Y[None,:]+eps) - Y[None,:], axis=(-2,-1)) # n*L*m*p*2 -> n*L*m
-        Q = softmax(logL, axis=(-2,-1))
+    tau = theta_G["tau"]
+    t=np.linspace(0,tau[-1],m)
+    topo = theta_G["topo"]
+    L=len(topo)
+    Y = np.zeros((L,m,p,2))
+    for l in range(L):
+        theta_l = np.concatenate((theta[:,topo[l]], theta[:,-4:]), axis=1)
+        Y[l] = get_Y(theta_l,t,tau) # m*p*2
+    #logL =  np.sum(X[:,None,None,:,:] * np.log(Y[None,:]+eps) - Y[None,:], axis=(-2,-1)) # n*L*m*p*2 -> n*L*m
+    logL = np.tensordot(X, np.log(Y),axes=([-2,-1],[-2,-1]))
+    logL -= np.sum(Y,axis = (-2,-1))
+    #Q = softmax(logL, axis=(-2,-1))
+    a = np.amax(logL,axis=(-2,-1),keepdims=True)
+    temp = np.exp(logL-a)
+    Q = temp/temp.sum(axis=(-2,-1),keepdims=True)
     
-    """
-    Q = np.zeros((n,L,m))
-    for i in range(n):
-        c = np.max(logL[i])
-        relative_logL = logL[i]-c        
-        L = np.exp(relative_logL)
-        Q[i] = L/L.sum()
-    """
-    
-    if np.sum(np.isnan(Q)) != 0:
-        raise ValueError("Nan in weight")
     return Q
 
-def traj_EM(X, theta_G, weight0, relative_penalty=0, epoch=20, alternative=False, parallel=False, n_threads=1, bnd=1000):
+def traj_EM(X, theta_G, weight0, relative_penalty=0, epoch=10, alternative=False, parallel=False, n_threads=1):
     """
     X: n cells * p genes
     m grid of t=[0,1]
@@ -293,33 +329,32 @@ def traj_EM(X, theta_G, weight0, relative_penalty=0, epoch=20, alternative=False
     
     if type(theta_G) is dict:
         n,L,m = np.shape(weight0)
-        weight = weight0.copy()
-        tau = theta_G["tau"]
+        Q = weight0.copy()
+        thetaG = theta_G
         topo = theta_G["topo"]
         
     else:       
         n,m = np.shape(weight0)
-        weight = weight0.copy()
-        weight = weight[:,None,:]
+        Q = weight0.copy()
+        Q = weight[:,None,:]
         tau = theta_G
         topo = np.array([np.arange(len(tau)-1)])
+        thetaG={"tau":tau,"topo":topo}
         
-    K=len(tau)-1
+    K=len(set(topo.flatten()))
     theta_hat = np.ones((p,K+4))
     theta_hat[:,0:K+2]=np.mean(X[:,:,0],axis=0)[:,None]
     theta_hat[:,-1] = np.mean(X[:,:,0],axis=0)/(np.mean(X[:,:,1],axis=0)+eps)
     theta_hist=[] 
     weight_hist=[]
     theta_hist.append(theta_hat.copy())
-    weight_hist.append(weight.copy())
+    weight_hist.append(Q.copy())
     
     alternative = False
     for i in tqdm(range(epoch)):
-        if i>0:
-            alternative = False
-        theta_hat = update_theta(X,weight,tau,topo,penalty,alternative,theta0=theta_hat,parallel=parallel,n_threads=n_threads,bnd = bnd)
-        weight = update_weight(X,theta_hat,tau,m)
+        theta_hat = update_theta(X,Q,thetaG,penalty,alternative,theta0=theta_hat,parallel=parallel,n_threads=n_threads)
+        Q = update_weight(X,theta_hat,thetaG,m)
         theta_hist.append(theta_hat.copy())
-        weight_hist.append(weight.copy())
+        weight_hist.append(Q.copy())
     return theta_hist, weight_hist
 
