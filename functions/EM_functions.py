@@ -16,14 +16,14 @@ Outline of traj_EM:
 """
 import numpy as np
 from tqdm import tqdm
+import time
 from multiprocessing import Pool
 from scipy.optimize import minimize
-from scipy.special import softmax
-import matplotlib.pyplot as plt
+from scipy.special import logsumexp
+import anndata as ad
 
 # global parameters: upper and lower limits for numerical stability
-eps = 1e-6
-omega = -1e6
+eps = 1e-20
 
 def get_Y_ori(theta, t, tau):
     # theta: p*(K+4)
@@ -205,10 +205,36 @@ def get_Y2(theta, t, tau):
         raise ValueError("Nan in Y")
     return Y
 
-
-def neglogL(theta,x,Q,t,tau,topo,penalty):
+def neglogL(theta, x, Q, t, tau, topo, penalty):
     # theta: length K+4
     # x: n*2
+    # Q: n*L*m
+    # t: len m
+    # tau: len K+1
+    logL = 0
+    for l in range(len(topo)):
+        theta_l = np.concatenate((theta[topo[l]], theta[-4:]))
+        Y = get_Y(theta_l[None,:],t,tau)[:,0,:] # m*2
+        weight_l = Q[:,l,:] #n*m
+        x_weighted = weight_l.T@x # m*2
+        marginal_weight =  weight_l.sum(axis=0)[:,None] # m*1
+        logL += np.sum( x_weighted * np.log(eps + Y) - marginal_weight*Y )
+
+    loss = - logL    
+
+    ## L1 Regularization
+    if penalty>0:
+        for l in range(len(topo)): 
+            loss += penalty * np.abs(theta[topo[l][0]]-theta[-4]) 
+            for k in range(1,len(topo[l])):
+                loss += penalty * np.abs(theta[topo[l][k]]-theta[topo[l][k-1]]) 
+        loss += penalty * np.abs(theta[-3]*theta[-1]/theta[-2]-theta[-4]) 
+
+    return loss
+
+def neglogL_old(theta, x, Q, t, tau, topo, penalty=0):
+    # theta: length K+4
+    # x: n
     # Q: n*L*m
     # t: len m
     # tau: len K+1
@@ -219,16 +245,17 @@ def neglogL(theta,x,Q,t,tau,topo,penalty):
         Y = get_Y(theta_l[None,:],t,tau) # m*1*2
         Y = Y[None,:,0,:] # 1*m*2
         weight_l = Q[:,l,:,None] #n*m*1
-        logL += np.sum( weight_l * (x[:,None,:] * np.log(eps + Y) - Y ) )
+        logL += np.sum( weight_l*(x[:,None,:] * np.log(eps + Y) - Y) )
 
     loss = - logL    
 
     ## L1 Regularization
-    for l in range(len(topo)): 
-        loss += penalty * np.abs(theta[topo[l][0]]-theta[-4]) 
-        for k in range(1,len(topo[l])):
-            loss += penalty * np.abs(theta[topo[l][k]]-theta[topo[l][k-1]]) 
-    loss += penalty * np.abs(theta[-3]*theta[-1]/theta[-2]-theta[-4]) 
+    if penalty>0:
+        for l in range(len(topo)): 
+            loss += penalty * np.abs(theta[topo[l][0]]-theta[-4]) 
+            for k in range(1,len(topo[l])):
+                loss += penalty * np.abs(theta[topo[l][k]]-theta[topo[l][k-1]]) 
+        loss += penalty * np.abs(theta[-3]*theta[-1]/theta[-2]-theta[-4]) 
 
     return loss
 
@@ -243,7 +270,7 @@ def neglogL_a(theta_a,theta_bg,x,Q,t,tau,topo,penalty):
     loss = neglogL(theta,x,Q,t,tau,topo,penalty)
     return loss
 
-def update_theta_j(theta0, x, Q, t, tau, topo, penalty, alternative, bnd=1000, bnd_beta=100, miter = 100000, alteriter = 20):
+def update_theta_j(theta0, x, Q, t, tau, topo, penalty, alternative, bnd=1000, bnd_beta=100, miter = 1000, alteriter = 20):
     bounds = [[0,bnd]]*len(theta0)
     bounds[-2:] = [[1/bnd_beta,bnd_beta]]*2
     if alternative:
@@ -260,101 +287,211 @@ def update_theta_j(theta0, x, Q, t, tau, topo, penalty, alternative, bnd=1000, b
         new_theta = res.x
     return new_theta
 
-def update_theta(X,weight,theta_G,penalty=0,alternative=False,parallel=False,n_threads=1,theta0=None, bnd=1000, bnd_beta=100):
-    """
-    beta and gamma can not be equal
-    """
-    n,L,m = np.shape(weight)
-    Q = weight.copy()
-    tau = theta_G["tau"]
-    topo = theta_G["topo"]
-        
-    n,p,s=np.shape(X)
-    if s!=2:
-        raise TypeError("wrong parameters lengths")
-    
-    t=np.linspace(0,1,m)
-    n_states=len(set(topo.flatten()))
-
-    if theta0 is None:
-        theta0 = np.ones((p,n_states+4))
-        theta0[:,0:-3]=np.mean(X[:,:,0],axis=0)[:,None]
-        theta0[:,-3]=np.mean(X[:,:,1],axis=0)
-        theta0[:,-1] = np.mean(X[:,:,0],axis=0)/(np.mean(X[:,:,1],axis=0)+eps)
-
-    if parallel is True:
-        Input_args = []
-        for j in range(p):
-            Input_args.append((theta0[j], X[:,j], Q, t, tau, topo, penalty, alternative, bnd, bnd_beta))
-        with Pool(n_threads) as pool:      
-            theta_hat = pool.starmap(update_theta_j, Input_args)
-        theta_hat = np.array(theta_hat)
-    else:
-        theta_hat = np.zeros((p,n_states+4))
-        for j in range(p): 
-            theta_hat[i]=update_theta_j(theta0[j], X[:,j], Q, t, tau, topo, penalty, alternative, bnd)
-    return theta_hat
-
-def update_weight(X,theta,theta_G,m):
-    """
-    return 3D array posterior Q
-    """
-    n,p,s=np.shape(X)
-    tau = theta_G["tau"]
-    t=np.linspace(0,tau[-1],m)
-    topo = theta_G["topo"]
+def simulate_data(topo,tau,n,p,random_seed=2022,loomfilepath=None):
+    np.random.seed(random_seed)
     L=len(topo)
-    Y = np.zeros((L,m,p,2))
+    n_states=len(set(topo.flatten()))
+    t=np.linspace(tau[0],tau[-1],n)
+    theta=np.zeros((p,n_states+4))
+    for k in range(n_states+2):
+        theta[:,k]=np.exp(np.random.uniform(0,5,size=p))
+    theta[:,-2]=np.exp(np.random.uniform(0,3,size=p))
+    theta[:,-1]=np.exp(np.random.uniform(0,3,size=p))
+
+    Y = np.zeros((n*L,p,2))
     for l in range(L):
         theta_l = np.concatenate((theta[:,topo[l]], theta[:,-4:]), axis=1)
-        Y[l] = get_Y(theta_l,t,tau) # m*p*2
-    #logL =  np.sum(X[:,None,None,:,:] * np.log(Y[None,:]+eps) - Y[None,:], axis=(-2,-1)) # n*L*m*p*2 -> n*L*m
-    logL = np.tensordot(X, np.log(Y),axes=([-2,-1],[-2,-1]))
-    logL -= np.sum(Y,axis = (-2,-1))
-    #Q = softmax(logL, axis=(-2,-1))
-    a = np.amax(logL,axis=(-2,-1),keepdims=True)
-    temp = np.exp(logL-a)
-    Q = temp/temp.sum(axis=(-2,-1),keepdims=True)
-    
-    return Q
+        Y[l*n:(l+1)*n] = get_Y(theta_l,t,tau) # m*p*2
 
-def traj_EM(X, theta_G, weight0, relative_penalty=0, epoch=10, alternative=False, parallel=False, n_threads=1):
-    """
-    X: n cells * p genes
-    m grid of t=[0,1]
-    """
-    eps = 10**(-10)
-    n,p,_=np.shape(X)
-    penalty=relative_penalty*n
+    X = np.random.poisson(Y)
     
-    if type(theta_G) is dict:
-        n,L,m = np.shape(weight0)
-        Q = weight0.copy()
-        thetaG = theta_G
-        topo = theta_G["topo"]
-        
-    else:       
-        n,m = np.shape(weight0)
-        Q = weight0.copy()
-        Q = weight[:,None,:]
-        tau = theta_G
-        topo = np.array([np.arange(len(tau)-1)])
-        thetaG={"tau":tau,"topo":topo}
-        
-    K=len(set(topo.flatten()))
-    theta_hat = np.ones((p,K+4))
-    theta_hat[:,0:K+2]=np.mean(X[:,:,0],axis=0)[:,None]
-    theta_hat[:,-1] = np.mean(X[:,:,0],axis=0)/(np.mean(X[:,:,1],axis=0)+eps)
-    theta_hist=[] 
-    weight_hist=[]
-    theta_hist.append(theta_hat.copy())
-    weight_hist.append(Q.copy())
+    if loomfilepath is not None:
+        adata=ad.AnnData(np.sum(X,axis=-1))
+        adata.layers["spliced"] = X[:,:,1]
+        adata.layers["unspliced"] = X[:,:,0]
+        adata.layers["ambiguous"]=np.zeros_like(X[:,:,0])
+        adata.obs["time"]=np.repeat(t,L)
+        adata.obs["celltype"]=np.arange(n*L)//n
+        adata.uns["theta"]=theta
+        adata.write_loom(loomfilepath)
+    return theta, Y, X
     
-    alternative = False
-    for i in tqdm(range(epoch)):
-        theta_hat = update_theta(X,Q,thetaG,penalty,alternative,theta0=theta_hat,parallel=parallel,n_threads=n_threads)
-        Q = update_weight(X,theta_hat,thetaG,m)
-        theta_hist.append(theta_hat.copy())
+class TI_model:
+    """
+    A object to store the data and parameters of a probabilitic trajectory inference model.
+    
+    
+    Attributes
+    ----------
+    topo: 2D np.darray
+    tau:     
+    """
+
+    def __init__(self, topo, tau):
+        self.topo=topo
+        self.tau=tau
+        self.L=len(topo)
+        self.n_states=len(set(topo.flatten()))
+        return None
+    
+    def set_m(self,m):
+        self.m=m
+        self.t=np.linspace(self.tau[0],self.tau[-1],m)
+    
+    def _get_theta(self):
+        return self.theta.copy()
+    
+    def _initialize_theta(self, X):
+        p = X.shape[1]
+        self.theta = np.ones((p,self.n_states+4))
+        self.theta[:,0:-3]=np.mean(X[:,:,0],axis=0)[:,None]
+        self.theta[:,-3]=np.mean(X[:,:,1],axis=0)
+        self.theta[:,-1] = np.mean(X[:,:,0],axis=0)/(np.mean(X[:,:,1],axis=0)+eps)
+        return 
+    
+    def _initialize_Q(self, n, seed):
+        Q=np.random.uniform(0,1,(n,self.L,self.m))
+        Q=Q/Q.sum(axis=(-2,-1),keepdims=True)
+        return Q
+
+    def update_theta(self,X,Q,penalty=0,alternative=False,parallel=False,n_threads=1,theta0=None, bnd=1000, bnd_beta=100):
+        """
+        M-step
+        beta and gamma can not be equal
+        """
+        n,L,m = np.shape(Q)
+        n,p,s=np.shape(X)
+        if s!=2:
+            raise TypeError("wrong parameters lengths")
+
+        if not hasattr(self, 'theta'):
+            self._initialize_theta(X)
+
+        if parallel is True:
+            Input_args = []
+            for j in range(p):
+                Input_args.append((self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, penalty, alternative, bnd, bnd_beta))
+            with Pool(n_threads) as pool:      
+                new_theta = pool.starmap(update_theta_j, Input_args)
+            new_theta = np.array(new_theta)
+        else:
+            new_theta = np.zeros((p,self.n_states+4))
+            for j in range(p): 
+                new_theta[j]=update_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, penalty, alternative, bnd, bnd_beta)
+                
+        self.theta = new_theta
+        return
+
+    def update_weight(self,X):
+        """
+        return 3D array posterior Q
+        """
+        if not hasattr(self, 'theta'):
+            raise ValueError("self.theta not defined")
+            
+        n,p,s=np.shape(X)
+        Y = np.zeros((self.L,self.m,p,2))
+        for l in range(self.L):
+            theta_l = np.concatenate((self.theta[:,self.topo[l]], self.theta[:,-4:]), axis=1)
+            Y[l] = get_Y(theta_l,self.t,self.tau) # m*p*2
+        #logL =  np.sum(X[:,None,None,:,:] * np.log(Y[None,:]+eps) - Y[None,:], axis=(-2,-1)) # n*L*m*p*2 -> n*L*m
+        logL = np.tensordot(X, np.log(eps + Y),axes=([-2,-1],[-2,-1]))
+        logL -= np.sum(Y,axis = (-2,-1))
+        lower_bound = np.mean(logsumexp(logL, axis=(-2,-1)))
+        #Q = softmax(logL, axis=(-2,-1))
+        a = np.amax(logL,axis=(-2,-1),keepdims=True)
+        temp = np.exp(logL-a)
+        Q = temp/temp.sum(axis=(-2,-1),keepdims=True)
+        return Q, lower_bound
+    
+    def fit(self, X, Q, relative_penalty=0, epoch=10, alternative=False, tol=0.01, parallel=False, n_threads=1):
+        """
+        The method fits the model n_init times and sets the parameters with
+        which the model has the largest likelihood or lower bound. Within each
+        trial, the method iterates between E-step and M-step for `max_iter`
+        times
+        X: n cells * p genes
+        m grid of t=[0,1]
+        """
+        n, p, _ = np.shape(X)
+        n, L, m = Q.shape
+        penalty=relative_penalty*n
+        
+        self._initialize_theta(X)
+        self.set_m(m)
+        
+        theta_hist=[] 
+        weight_hist=[]
+        lower_bounds=[]
+        theta_hist.append(self._get_theta())
         weight_hist.append(Q.copy())
-    return theta_hist, weight_hist
 
+        alternative = False
+        lower_bound = - np.inf
+        self.converged = False
+        time_start = time.time()
+        for i in range(epoch):
+            prev_lower_bound = lower_bound
+            self.update_theta(X,Q,parallel=parallel,n_threads=n_threads)
+            theta_hist.append(self._get_theta())
+            Q, lower_bound = self.update_weight(X)
+            weight_hist.append(Q.copy())
+            lower_bounds.append(lower_bound)  
+            #plot_phase(X,self.theta,Q,self.topo,self.tau)
+            
+            print(str(i)+" iteration: "+str(int(time.time()-time_start)),'s')
+            # check converged
+            change = lower_bound - prev_lower_bound
+            if abs(change) < tol:
+                self.converged = True
+                break
+                
+        return theta_hist, weight_hist, lower_bounds
+    
+    def fit_(self, X, m, relative_penalty=0, n_init=3, epoch=10, alternative=False, tol=0.01, parallel=False, n_threads=1):
+        """
+        The method fits the model n_init times and sets the parameters with
+        which the model has the largest likelihood or lower bound. Within each
+        trial, the method iterates between E-step and M-step for `max_iter`
+        times
+        X: n cells * p genes
+        m grid of t=[0,1]
+        """
+        n, p, _ = np.shape(X)
+        penalty=relative_penalty*n
+        
+        self._initialize_theta(X)
+        self.set_m(m)
+        
+        alternative = False
+        max_lower_bound = -np.inf
+        for init in tqdm(range(n_init)):
+            Q = self._initialize_Q(n, init)
+            lower_bound = -np.inf
+            self.converged = False
+            for i in range(epoch):
+                prev_lower_bound = lower_bound
+                self.update_theta(X,Q,parallel=parallel,n_threads=n_threads)
+                Q, lower_bound = self.update_weight(X)
+                change = lower_bound - prev_lower_bound
+                if abs(change) < tol:
+                    self.converged = True
+                    break
+                
+            if lower_bound > max_lower_bound or max_lower_bound == -np.inf:
+                max_lower_bound = lower_bound
+                best_theta = self._get_theta()
+                
+        self.theta = best_theta
+        return
+    
+    def _compute_lower_bound(self,X,Q):
+        n,p,s=np.shape(X)
+        Y = np.zeros((self.L,self.m,p,2))
+        for l in range(self.L):
+            theta_l = np.concatenate((self.theta[:,self.topo[l]], self.theta[:,-4:]), axis=1)
+            Y[l] = get_Y(theta_l,self.t,self.tau) # m*p*2
+        #logL =  np.sum(X[:,None,None,:,:] * np.log(Y[None,:]+eps) - Y[None,:], axis=(-2,-1)) # n*L*m*p*2 -> n*L*m
+        logL = np.tensordot(X, np.log(eps + Y), axes=([-2,-1],[-2,-1]))
+        logL -= np.sum(Y,axis=(-2,-1))
+        return np.mean(logsumexp(logL, axis=(-2,-1)))
