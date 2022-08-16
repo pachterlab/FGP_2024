@@ -431,7 +431,7 @@ class Trajectory:
         lower_bound = - np.inf
         self.converged = False
         time_start = time.time()
-        for i in range(epoch):
+        for i in tqdm(range(epoch)):
             prev_lower_bound = lower_bound
             self.update_theta(X,Q,parallel=parallel,n_threads=n_threads)
             theta_hist.append(self._get_theta())
@@ -468,11 +468,12 @@ class Trajectory:
         thetas = []
         alternative = False
         max_lower_bound = -np.inf
-        for init in tqdm(range(n_init)):
+        for init in range(n_init):
+            print("trial "+str(init))
             Q = self._initialize_Q(n, init)
             lower_bound = -np.inf
             self.converged = False
-            for i in range(epoch):
+            for i in tqdm(range(epoch)):
                 prev_lower_bound = lower_bound
                 self.update_theta(X,Q,parallel=parallel,n_threads=n_threads)
                 Q, lower_bound = self.update_weight(X)
