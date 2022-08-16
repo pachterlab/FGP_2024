@@ -7,13 +7,10 @@ Created on Thu Jun 16 21:20:50 2022
 """
 
 """
-Outline of traj_EM:
-    n cells, p genes, m time grids, L lineages
-    Given Q(z) which is a n*L*m array, compute optimal theta_j for each gene j:
-        compute loss which is negative log likelihood + Regularization 
-        negative log likelihood is a function of theta_j and Q(z)
-        
+This file contains the class TI_model and its functions
+    
 """
+#%%
 import numpy as np
 from tqdm import tqdm
 import time
@@ -239,7 +236,6 @@ def neglogL_old(theta, x, Q, t, tau, topo, penalty=0):
     # t: len m
     # tau: len K+1
     logL = 0
-    K = len(tau) - 1
     for l in range(len(topo)):
         theta_l = np.concatenate((theta[topo[l]], theta[-4:]))
         Y = get_Y(theta_l[None,:],t,tau) # m*1*2
@@ -316,9 +312,11 @@ def simulate_data(topo,tau,n,p,random_seed=2022,loomfilepath=None):
         adata.write_loom(loomfilepath)
     return theta, Y, X
     
-class TI_model:
+
+#%%
+class Trajectory:
     """
-    A object to store the data and parameters of a probabilitic trajectory inference model.
+    Representation of a trajectory model probability distribution.
     
     
     Attributes
@@ -397,6 +395,7 @@ class TI_model:
         #logL =  np.sum(X[:,None,None,:,:] * np.log(Y[None,:]+eps) - Y[None,:], axis=(-2,-1)) # n*L*m*p*2 -> n*L*m
         logL = np.tensordot(X, np.log(eps + Y),axes=([-2,-1],[-2,-1]))
         logL -= np.sum(Y,axis = (-2,-1))
+        #logL += np.log(self.prior_) where self.prior_ = 1/L/m
         lower_bound = np.mean(logsumexp(logL, axis=(-2,-1)))
         #Q = softmax(logL, axis=(-2,-1))
         a = np.amax(logL,axis=(-2,-1),keepdims=True)
@@ -418,6 +417,8 @@ class TI_model:
         penalty=relative_penalty*n
         
         self._initialize_theta(X)
+
+        #self.prior_ = np.ones_like(Q)/L/m
         self.set_m(m)
         
         theta_hist=[] 
@@ -448,7 +449,7 @@ class TI_model:
                 
         return theta_hist, weight_hist, lower_bounds
     
-    def fit_(self, X, m, relative_penalty=0, n_init=3, epoch=10, alternative=False, tol=0.01, parallel=False, n_threads=1):
+    def fit_(self, X, m, relative_penalty=0, n_init=3, epoch=10, alternative=False, tol=1e-6, parallel=False, n_threads=1):
         """
         The method fits the model n_init times and sets the parameters with
         which the model has the largest likelihood or lower bound. Within each
@@ -463,6 +464,8 @@ class TI_model:
         self._initialize_theta(X)
         self.set_m(m)
         
+        elbos = []
+        thetas = []
         alternative = False
         max_lower_bound = -np.inf
         for init in tqdm(range(n_init)):
@@ -481,9 +484,11 @@ class TI_model:
             if lower_bound > max_lower_bound or max_lower_bound == -np.inf:
                 max_lower_bound = lower_bound
                 best_theta = self._get_theta()
-                
+                    
+            elbos.append(lower_bound)
+            thetas.append(self._get_theta())
         self.theta = best_theta
-        return
+        return Q, elbos
     
     def _compute_lower_bound(self,X,Q):
         n,p,s=np.shape(X)
@@ -494,4 +499,87 @@ class TI_model:
         #logL =  np.sum(X[:,None,None,:,:] * np.log(Y[None,:]+eps) - Y[None,:], axis=(-2,-1)) # n*L*m*p*2 -> n*L*m
         logL = np.tensordot(X, np.log(eps + Y), axes=([-2,-1],[-2,-1]))
         logL -= np.sum(Y,axis=(-2,-1))
+        #logL += np.log(self.prior_) where self.prior_ = 1/L/m
         return np.mean(logsumexp(logL, axis=(-2,-1)))
+
+
+#%%
+if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+    np.random.seed(2022)
+    topo = np.array([[0,]])
+    tau=(0,1)
+    n = 2000
+    p = 20
+    K=len(tau)-1
+    t=np.linspace(0, 1, n)
+    
+    theta=np.ones((p,K+4))*5
+    loga_max=4
+    logb_max=2
+    
+    for j in range(K+2):
+        theta[:,j]=np.exp(np.random.uniform(0,loga_max,size=p))-1
+    
+    theta[:,-1]=5*(np.exp(np.random.uniform(-logb_max,logb_max,size=p)))
+    theta[:,-3]=theta[:,-4]*theta[:,-2]/theta[:,-1]
+    gamma = theta[:,-1]/5
+    
+    Y = get_Y(theta,t,tau)
+    
+    X = np.random.poisson(Y)
+    
+    c = np.random.lognormal(-0.005,0.1,n).reshape((-1,1,1))
+    
+    D = np.random.poisson(c*X)
+    
+    fig, ax = plt.subplots(1,10,figsize=(6*10,4))
+    for i in range(10):
+        ax[i].plot(Y[:,i,1]*gamma[i],Y[:,i,1],'--', color='gray');
+        ax[i].scatter(X[:,i,0],X[:,i,1],c=t);
+        ax[i].scatter(Y[:,i,0],Y[:,i,1],c='black');
+        
+        
+    traj_D = Trajectory(topo, tau)
+    Q, elbos = traj_D.fit_(D, 100, n_init=3, parallel=True, n_threads=4)
+    
+    plot_phase(D,traj_D.theta,Q,topo,tau)
+    plot_theta(theta,traj_D.theta)
+    plot_phase(D,theta,Q,topo,tau)
+    
+    
+    traj_X = Trajectory(topo, tau)
+    Q, elbos = traj_X.fit_(X, 100, n_init=3, parallel=True, n_threads=4)
+    
+    plot_phase(X,traj_X.theta,Q,topo,tau)
+    plot_theta(theta,traj_X.theta)
+    plot_phase(X,theta,Q,topo,tau)
+    
+    plot_theta(traj.theta,traj_X.theta)
+    
+            
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    

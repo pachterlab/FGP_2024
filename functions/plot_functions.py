@@ -1,4 +1,8 @@
+from EM_functions import *
+import matplotlib.pyplot as plt
+
 cmps = ['viridis', 'plasma', 'inferno', 'magma', 'cividis']
+colors20 = np.vstack((plt.cm.tab20b(np.linspace(0., 1, 20))[::2], plt.cm.tab20c(np.linspace(0, 1, 20))[1::2]))
 
 def plot_t(weight,ax=None,t=None):
     m=np.shape(weight)[-1]
@@ -58,7 +62,9 @@ def plot_theta(theta,theta_hat):
         ax[i].set_yscale('log')
 
 
-def plot_theta_hat(theta_hat,K,gene_list):
+def plot_theta_hat(theta_hat,K,gene_list=None):
+    if gene_list is None:
+        gene_list = np.arange(len(theta_hat))
     fig, ax = plt.subplots(K+4,1,figsize=(12,4*(K+4)))
 
     for i in range(K+4):
@@ -72,48 +78,8 @@ def plot_theta_hat(theta_hat,K,gene_list):
     ax[5].set_title("log gamma");
 
 
-def plot_y(theta,theta_hat,weight,tau,gene_list):
-    m=np.shape(weight)[1]
-    p=np.shape(theta_hat)[0]
-    h=np.linspace(0,1,m)
-    t_hat=np.sum(weight*h[None,:],axis=1)
-    y_hat = get_Y(theta_hat, t_hat, tau)
-    y = get_Y(theta, t_hat, tau)
-    fig, ax = plt.subplots(p,2,figsize=(12,4*p))
-    for i in range(p):
-        ax[i,0].plot(t_hat,X[:,i,0],'.',color="gray");
-        ax[i,0].plot(t_hat,y_hat[:,i,0],'b.', label = 'fit');
-        ax[i,0].plot(t_hat,y[:,i,0],'r.',label = 'true');
-        ax[i,0].set_title(gene_list[i]+" unspliced")
 
-        ax[i,1].plot(t_hat,X[:,i,1],'.',color="gray");
-        ax[i,1].plot(t_hat,y_hat[:,i,1],'b.', label = 'fit');
-        ax[i,1].plot(t_hat,y[:,i,1],'r.', label = 'true');
-        ax[i,1].set_title(gene_list[i]+" spliced")
-        ax[i,1].legend()
-
-def plot_t(weight,ax=None,t=None):
-    m=np.shape(weight)[1]
-    h=np.linspace(0,1,m)
-    t_hat=np.sum(weight*h[None,:],axis=1)
-    if ax is None:
-        fig, ax = plt.subplots(1,1)
-    if t is not None:
-        ord=np.argsort(t)
-        # build a rectangle in axes coords
-        left, width = .25, .5
-        bottom, height = .25, .5
-        right = left + width
-        top = bottom + height
-       
-        ax.imshow(weight[ord,:],aspect="auto");
-        ax.text(right, top,"cor="+str(np.around(np.corrcoef(t_hat,t)[0,1],2)), horizontalalignment='right', 
-                 verticalalignment='top', transform=ax.transAxes, color="white");
-    else:
-        ord=np.argsort(t_hat)
-        ax.imshow(weight[ord,:],aspect="auto");
-
-def plot_theta_hat(theta_hat,K,gene_list=None):
+def plot_theta_diff(theta_hat,K,gene_list=None):
     if gene_list is None:
         gene_list = np.arange(len(theta_hat))
     fig, ax = plt.subplots(K+4,1,figsize=(12,4*(K+4)))
@@ -134,7 +100,7 @@ def plot_theta_hat(theta_hat,K,gene_list=None):
 
 
 def plot_y(X,theta_hat,weight,tau,gene_list):
-    m=np.shape(weight)[1]
+    n,L,m=np.shape(weight)
     p=np.shape(theta_hat)[0]
     h=np.linspace(0,1,m)
     t_hat=np.sum(weight*h[None,:],axis=1)
@@ -161,23 +127,10 @@ def plot_y(X,theta_hat,weight,tau,gene_list):
 
             
             
-def plot_phase(X,theta_hat,weight,theta_G,gene_list=None):
+def plot_phase(X,theta_hat,weight,topo,tau,gene_list=None):
     if gene_list is None:
         gene_list = np.arange(len(theta_hat))
-        
-    if type(theta_G) is dict:
-        n,L,m = np.shape(weight)
-        Q = weight.copy()
-        tau = theta_G["tau"]
-        topo = theta_G["topo"]
-        
-    else:       
-        n,m = np.shape(weight)
-        Q = weight.copy()
-        Q = Q[:,None,:]
-        tau = theta_G
-        topo = np.array([np.arange(len(tau)-1)])
-    
+    n,L,m=np.shape(weight)
     p=np.shape(theta_hat)[0]
     h=np.linspace(0,1,m)
     fig, ax = plt.subplots(1,p,figsize=(6*p,4))
@@ -193,7 +146,7 @@ def plot_phase(X,theta_hat,weight,theta_G,gene_list=None):
     
     Y_hat = np.zeros((L,n,p,2))
     for l in range(L):
-        t_hat=np.sum(Q[:,l,:]*h[None,:],axis=1)
+        t_hat=np.sum(weight[:,l,:]*h[None,:],axis=1)
         theta_l_hat = np.concatenate((theta_hat[:,topo[l]], theta_hat[:,-4:]), axis=1)
         Y_hat[l] = get_Y(theta_l_hat,t_hat,tau) # m*p*2
         y_hat = Y_hat[l]
