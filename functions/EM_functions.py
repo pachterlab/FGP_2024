@@ -202,7 +202,7 @@ def get_Y2(theta, t, tau):
         raise ValueError("Nan in Y")
     return Y
 
-def neglogL(theta, x, Q, t, tau, topo, penalty):
+def neglogL(theta, x_weighted, marginal_weight, t, tau, topo, penalty):
     # theta: length K+4
     # x: n*2
     # Q: n*L*m
@@ -212,11 +212,8 @@ def neglogL(theta, x, Q, t, tau, topo, penalty):
     for l in range(len(topo)):
         theta_l = np.concatenate((theta[topo[l]], theta[-4:]))
         Y = get_Y(theta_l[None,:],t,tau)[:,0,:] # m*2
-        weight_l = Q[:,l,:] #n*m
-        x_weighted = weight_l.T@x # m*2
-        marginal_weight =  weight_l.sum(axis=0)[:,None] # m*1
-        logL += np.sum( x_weighted * np.log(eps + Y) - marginal_weight*Y )
-
+        logL += np.sum( x_weighted[l] * np.log(eps + Y) - marginal_weight[l]*Y )
+        
     loss = - logL    
 
     ## L1 Regularization
@@ -266,9 +263,18 @@ def neglogL_a(theta_a,theta_bg,x,Q,t,tau,topo,penalty):
     loss = neglogL(theta,x,Q,t,tau,topo,penalty)
     return loss
 
-def update_theta_j(theta0, x, Q, t, tau, topo, penalty, alternative, bnd=1000, bnd_beta=100, miter = 1000, alteriter = 20):
+def update_theta_j(theta0, x, Q, t, tau, topo, penalty, alternative, bnd=1000, bnd_beta=100, miter = 1000, alteriter = 10):
     bounds = [[0,bnd]]*len(theta0)
     bounds[-2:] = [[1/bnd_beta,bnd_beta]]*2
+    
+    n,L,m = Q.shape
+    x_weighted = np.zeros((L,m,2))
+    marginal_weight = np.zeros((L,m,1))
+    for l in range(len(topo)):
+        weight_l = Q[:,l,:] #n*m
+        x_weighted[l] = weight_l.T@x # m*2
+        marginal_weight[l] =  weight_l.sum(axis=0)[:,None] # m*1
+    
     if alternative:
         new_theta = theta0.copy()
         for i in range(alteriter):
@@ -279,7 +285,7 @@ def update_theta_j(theta0, x, Q, t, tau, topo, penalty, alternative, bnd=1000, b
             res2 = minimize(neglogL_bg, new_theta[-2:], args=(new_theta[:-2],x,Q,t,tau,topo,penalty), bounds = bounds[-2:], options={'maxiter': int(miter/alteriter/2),'disp': False}) 
             new_theta[-2:]=res2.x
     else:
-        res = minimize(neglogL, theta0, args=(x,Q,t,tau,topo,penalty), bounds=bounds, options={'maxiter': miter,'disp': False}) 
+        res = minimize(neglogL, theta0, args=(x_weighted,marginal_weight,t,tau,topo,penalty), bounds=bounds, options={'maxiter': miter,'disp': False}) 
         new_theta = res.x
     return new_theta
 
@@ -309,6 +315,8 @@ def simulate_data(topo,tau,n,p,random_seed=2022,loomfilepath=None):
         adata.obs["time"]=np.repeat(t,L)
         adata.obs["celltype"]=np.arange(n*L)//n
         adata.uns["theta"]=theta
+        adata.var["true_beta"]=theta[:,-2]
+        adata.var["true_gamma"]=theta[:,-1]
         adata.write_loom(loomfilepath)
     return theta, Y, X
     
@@ -347,12 +355,12 @@ class Trajectory:
         self.theta[:,-1] = np.mean(X[:,:,0],axis=0)/(np.mean(X[:,:,1],axis=0)+eps)
         return 
     
-    def _initialize_Q(self, n, seed):
+    def _initialize_Q(self, n):
         Q=np.random.uniform(0,1,(n,self.L,self.m))
         Q=Q/Q.sum(axis=(-2,-1),keepdims=True)
         return Q
 
-    def update_theta(self,X,Q,penalty=0,alternative=False,parallel=False,n_threads=1,theta0=None, bnd=1000, bnd_beta=100):
+    def update_theta(self,X,Q,penalty=0,alternative=False,parallel=False,n_threads=1,theta0=None,bnd=1000,bnd_beta=100,miter=1000):
         """
         M-step
         beta and gamma can not be equal
@@ -368,14 +376,14 @@ class Trajectory:
         if parallel is True:
             Input_args = []
             for j in range(p):
-                Input_args.append((self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, penalty, alternative, bnd, bnd_beta))
+                Input_args.append((self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, penalty, alternative, bnd, bnd_beta, miter))
             with Pool(n_threads) as pool:      
                 new_theta = pool.starmap(update_theta_j, Input_args)
             new_theta = np.array(new_theta)
         else:
             new_theta = np.zeros((p,self.n_states+4))
             for j in range(p): 
-                new_theta[j]=update_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, penalty, alternative, bnd, bnd_beta)
+                new_theta[j]=update_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, penalty, alternative, bnd, bnd_beta,miter)
                 
         self.theta = new_theta
         return
@@ -449,7 +457,7 @@ class Trajectory:
                 
         return theta_hist, weight_hist, lower_bounds
     
-    def fit_(self, X, m, relative_penalty=0, n_init=3, epoch=10, alternative=False, tol=1e-6, parallel=False, n_threads=1):
+    def fit_(self, X, m, relative_penalty=0, n_init=3, epoch=10, tol=1e-6, parallel=False, n_threads=1, seed=42):
         """
         The method fits the model n_init times and sets the parameters with
         which the model has the largest likelihood or lower bound. Within each
@@ -460,27 +468,31 @@ class Trajectory:
         """
         n, p, _ = np.shape(X)
         penalty=relative_penalty*n
-        
-        self._initialize_theta(X)
+     
         self.set_m(m)
+        np.random.seed(seed)
         
         elbos = []
         thetas = []
         alternative = False
         max_lower_bound = -np.inf
         for init in range(n_init):
-            print("trial "+str(init))
-            Q = self._initialize_Q(n, init)
+            print("trial "+str(init+1))
+            Q = self._initialize_Q(n)
+            self._initialize_theta(X)
             lower_bound = -np.inf
             self.converged = False
             for i in tqdm(range(epoch)):
                 prev_lower_bound = lower_bound
-                self.update_theta(X,Q,parallel=parallel,n_threads=n_threads)
+                self.update_theta(X,Q,parallel=parallel,n_threads=n_threads,miter=1000)
                 Q, lower_bound = self.update_weight(X)
                 change = lower_bound - prev_lower_bound
                 if abs(change) < tol:
                     self.converged = True
                     break
+            if not self.converged:
+                self.update_theta(X,Q,parallel=parallel,n_threads=n_threads,miter=100000)
+                Q, lower_bound = self.update_weight(X)
                 
             if lower_bound > max_lower_bound or max_lower_bound == -np.inf:
                 max_lower_bound = lower_bound
@@ -489,7 +501,7 @@ class Trajectory:
             elbos.append(lower_bound)
             thetas.append(self._get_theta())
         self.theta = best_theta
-        return Q, elbos
+        return Q, elbos, thetas
     
     def _compute_lower_bound(self,X,Q):
         n,p,s=np.shape(X)
