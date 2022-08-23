@@ -1,8 +1,41 @@
-from EM_functions import *
+from trajectory import *
+import anndata as ad
 import matplotlib.pyplot as plt
 
 cmps = ['viridis', 'plasma', 'inferno', 'magma', 'cividis']
 colors20 = np.vstack((plt.cm.tab20b(np.linspace(0., 1, 20))[::2], plt.cm.tab20c(np.linspace(0, 1, 20))[1::2]))
+
+def simulate_data(topo,tau,n,p,random_seed=2022,loomfilepath=None):
+    np.random.seed(random_seed)
+    L=len(topo)
+    n_states=len(set(topo.flatten()))
+    t=np.linspace(tau[0],tau[-1],n)
+    theta=np.zeros((p,n_states+4))
+    for k in range(n_states+2):
+        theta[:,k]=np.exp(np.random.uniform(0,5,size=p))
+    theta[:,-2]=np.exp(np.random.uniform(0,3,size=p))
+    theta[:,-1]=np.exp(np.random.uniform(0,3,size=p))
+
+    Y = np.zeros((n*L,p,2))
+    for l in range(L):
+        theta_l = np.concatenate((theta[:,topo[l]], theta[:,-4:]), axis=1)
+        Y[l*n:(l+1)*n] = get_Y(theta_l,t,tau) # m*p*2
+
+    X = np.random.poisson(Y)
+    
+    if loomfilepath is not None:
+        adata=ad.AnnData(np.sum(X,axis=-1))
+        adata.layers["spliced"] = X[:,:,1]
+        adata.layers["unspliced"] = X[:,:,0]
+        adata.layers["ambiguous"]=np.zeros_like(X[:,:,0])
+        adata.obs["time"]=np.repeat(t,L)
+        adata.obs["celltype"]=np.arange(n*L)//n
+        adata.uns["theta"]=theta
+        adata.var["true_beta"]=theta[:,-2]
+        adata.var["true_gamma"]=theta[:,-1]
+        adata.write_loom(loomfilepath)
+    return theta, Y, X
+    
 
 def plot_t(weight,ax=None,t=None):
     m=np.shape(weight)[-1]
