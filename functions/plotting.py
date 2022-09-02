@@ -1,57 +1,25 @@
-from trajectory import *
-import anndata as ad
+from basic import get_Y
+import numpy as np
 import matplotlib.pyplot as plt
 
 cmps = ['viridis', 'plasma', 'inferno', 'magma', 'cividis']
-colors20 = np.vstack((plt.cm.tab20b(np.linspace(0., 1, 20))[::2], plt.cm.tab20c(np.linspace(0, 1, 20))[1::2]))
+colors20 = np.vstack((plt.cm.tab20b(np.linspace(0., 1, 20))[::2], plt.cm.tab20c(np.linspace(0, 1, 20))[1::2]))    
 
-def simulate_data(topo,tau,n,p,random_seed=2022,loomfilepath=None):
-    np.random.seed(random_seed)
-    L=len(topo)
-    n_states=len(set(topo.flatten()))
-    t=np.linspace(tau[0],tau[-1],n)
-    theta=np.zeros((p,n_states+4))
-    for k in range(n_states+2):
-        theta[:,k]=np.exp(np.random.uniform(0,5,size=p))
-    theta[:,-2]=np.exp(np.random.uniform(0,3,size=p))
-    theta[:,-1]=np.exp(np.random.uniform(0,3,size=p))
-
-    Y = np.zeros((n*L,p,2))
-    for l in range(L):
-        theta_l = np.concatenate((theta[:,topo[l]], theta[:,-4:]), axis=1)
-        Y[l*n:(l+1)*n] = get_Y(theta_l,t,tau) # m*p*2
-
-    X = np.random.poisson(Y)
-    
-    if loomfilepath is not None:
-        adata=ad.AnnData(np.sum(X,axis=-1))
-        adata.layers["spliced"] = X[:,:,1]
-        adata.layers["unspliced"] = X[:,:,0]
-        adata.layers["ambiguous"]=np.zeros_like(X[:,:,0])
-        adata.obs["time"]=np.repeat(t,L)
-        adata.obs["celltype"]=np.arange(n*L)//n
-        adata.uns["theta"]=theta
-        adata.var["true_beta"]=theta[:,-2]
-        adata.var["true_gamma"]=theta[:,-1]
-        adata.write_loom(loomfilepath)
-    return theta, Y, X
-    
-
-def plot_t(weight,ax=None,t=None):
+def plot_t(weight,l=0,ax=None,t=None):
     m=np.shape(weight)[-1]
     h=np.linspace(0,1,m)
     t_hat=np.sum(weight*h[None,None,:],axis=(-2,-1))
     if ax is None:
         fig, ax = plt.subplots(1,1)
     if t is not None:
-        ord=np.argsort(t)
+        # ord=np.argsort(t)
         # build a rectangle in axes coords
         left, width = .25, .5
         bottom, height = .25, .5
         right = left + width
         top = bottom + height
        
-        ax.imshow(weight[ord,0,:],aspect="auto");
+        ax.imshow(weight[:,l,:],aspect="auto");
         ax.text(right, top,"cor="+str(np.around(np.corrcoef(t_hat,t)[0,1],2)), horizontalalignment='right', 
                  verticalalignment='top', transform=ax.transAxes, color="white");
     else:
@@ -63,36 +31,44 @@ def plot_theta(theta,theta_hat):
     fig, ax = plt.subplots(1,K+4,figsize=(6*(K+4),4))
 
     for i in range(K):
-        ax[i].plot(theta[:,i],theta[:,i]);
-        ax[i].plot(theta[:,i],theta_hat[:,i],'.');
+        ax[i].plot(1+theta[:,i],1+theta[:,i]);
+        ax[i].plot(1+theta[:,i],1+theta_hat[:,i],'.');
         ax[i].set_title("a"+str(i+1))
-        ax[i].set_xlabel("true values")
+        ax[i].set_xlabel("true values + 1")
+        ax[i].set_xscale('log')
+        ax[i].set_yscale('log')
 
-    ax[-4].plot(theta[:,-4],theta[:,-4]);
-    ax[-4].plot(theta[:,-4],theta_hat[:,-4],'.');
+    ax[-4].plot(1+theta[:,-4],1+theta[:,-4]);
+    ax[-4].plot(1+theta[:,-4],1+theta_hat[:,-4],'.');
     ax[-4].set_title("u0")
-    ax[-4].set_ylabel("fitted values")
-    ax[-4].set_xlabel("true values")
+    ax[-4].set_ylabel("fitted values + 1")
+    ax[-4].set_xlabel("true values + 1")
+    ax[-4].set_xscale('log')
+    ax[-4].set_yscale('log')
 
-    ax[-3].plot(theta[:,-3],theta[:,-3]);
-    ax[-3].plot(theta[:,-3],theta_hat[:,-3],'.');
+    ax[-3].plot(1+theta[:,-3],1+theta[:,-3]);
+    ax[-3].plot(1+theta[:,-3],1+theta_hat[:,-3],'.');
     ax[-3].set_title("s0")
-    ax[-3].set_ylabel("fitted values")
-    ax[-3].set_xlabel("true values")
-
+    ax[-3].set_ylabel("fitted values + 1")
+    ax[-3].set_xlabel("true values + 1")
+    ax[-3].set_xscale('log')
+    ax[-3].set_yscale('log')
+    
     ax[-2].plot(theta[:,-2],theta[:,-2]);
     ax[-2].plot(theta[:,-2],theta_hat[:,-2],'.');
-    ax[-2].set_title("beta");
+    ax[-2].set_title("log beta");
     ax[-2].set_xlabel("true values");
+    ax[-2].set_xscale('log')
+    ax[-2].set_yscale('log')
+    
 
     ax[-1].plot(theta[:,-1],theta[:,-1]);
     ax[-1].plot(theta[:,-1],theta_hat[:,-1],'.');
-    ax[-1].set_title("gamma");
+    ax[-1].set_title("log gamma");
     ax[-1].set_xlabel("true values");
+    ax[-1].set_xscale('log')
+    ax[-1].set_yscale('log')
     
-    for i in range(K+4):
-        ax[i].set_xscale('log')
-        ax[i].set_yscale('log')
 
 
 def plot_theta_hat(theta_hat,K,gene_list=None):
