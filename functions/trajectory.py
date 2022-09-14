@@ -14,6 +14,10 @@ from basic import get_Y, update_theta_j, update_nested_theta_j
     
 eps = 1e-10
 
+def get_AIC(L,n,k):
+    return -2*(L-k/n)
+
+
 class Trajectory:
     """
     Representation of a trajectory model probability distribution.
@@ -25,11 +29,12 @@ class Trajectory:
     tau:     
     """
 
-    def __init__(self, topo, tau):
+    def __init__(self, topo, tau, model_restrictions=None):
         self.topo=topo
         self.tau=tau
         self.L=len(topo)
         self.n_states=len(set(topo.flatten()))
+        self.model_restrictions = model_restrictions
         return None
     
     def _set_m(self,m):
@@ -59,9 +64,6 @@ class Trajectory:
         """
         n,L,m = np.shape(Q)
         n,p,_ = np.shape(X)
-
-        if not hasattr(self, 'theta'):
-            self._initialize_theta(X)
             
         if gene_idx is None:
             gene_idx = np.arange(p)
@@ -118,11 +120,6 @@ class Trajectory:
         """
         n,L,m = np.shape(Q)
         n,p,s=np.shape(X)
-        if s!=2:
-            raise TypeError("wrong parameters lengths")
-
-        if not hasattr(self, 'theta'):
-            self._initialize_theta(X)
 
         gene_idx = np.array(list(nested_model.keys()))
         if parallel is True:
@@ -188,6 +185,55 @@ class Trajectory:
             lower_bound = np.mean(logsumexp(logl, axis=(-2,-1))) - np.log(self.m) - np.log(self.L)
         return Q, lower_bound
     
+    def _fit(self, X, Q, theta, epoch, tol, parallel, n_threads):
+        """
+        The method fits the model by iterating between E-step and M-step for at most `epoch` iterations.
+        The warm start means that either a reasonable Q or theta is provided.
+    
+
+        Parameters
+        ----------
+        X : ndarray, shape (n, p, 2)
+            n cells * p genes * 2 species data matrix.
+        Q : TYPE
+            DESCRIPTION.
+        epoch : TYPE, optional
+            DESCRIPTION. The default is 10.
+        tol : TYPE, optional
+            DESCRIPTION. The default is 0.01.
+        parallel : TYPE, optional
+            DESCRIPTION. The default is False.
+        n_threads : TYPE, optional
+            DESCRIPTION. The default is 1.
+
+        Returns
+        -------
+        theta_hist : TYPE
+            DESCRIPTION.
+        weight_hist : TYPE
+            DESCRIPTION.
+        lower_bounds : TYPE
+            DESCRIPTION.
+
+        """
+        
+        n, p, _ = np.shape(X)
+        lower_bound = -np.inf
+        self.converged = False
+        self.theta = theta.copy()
+        for i in tqdm(range(epoch)):
+            prev_lower_bound = lower_bound
+            self.update_theta(X,Q,parallel=parallel,n_threads=n_threads)
+            Q, lower_bound = self.update_weight(X)
+            
+            ## check converged
+            change = lower_bound - prev_lower_bound
+            if abs(change) < tol:
+                self.converged = True
+                break
+                
+        return [Q, lower_bound]
+    
     def fit_warm_start(self, X, Q=None, theta=None, epoch=10, tol=1e-4, parallel=False, n_threads=1):
         """
         The method fits the model by iterating between E-step and M-step for at most `epoch` iterations.
@@ -228,15 +274,15 @@ class Trajectory:
             if Q is not None:
                 n, L, m = Q.shape
             else:
-                m = n//100
+                m = 100
             self._set_m(m)
             Q, lower_bound = self.update_weight(X)
             
         else:
+            self._initialize_theta(X)
             if Q is not None:
                 n, L, m = Q.shape
                 self._set_m(m)
-                lower_bound = - np.inf
             else:
                 raise AssertionError("either theta or Q needs to be provided")
                 
@@ -247,25 +293,8 @@ class Trajectory:
         #lower_bounds=[]
         #theta_hist.append(self._get_theta())
         #weight_hist.append(Q.copy())
-
-        self.converged = False
-        for i in tqdm(range(epoch)):
-            prev_lower_bound = lower_bound
-            self.update_theta(X,Q,parallel=parallel,n_threads=n_threads)
-            Q, lower_bound = self.update_weight(X)
-            print(lower_bound)
-            #theta_hist.append(self._get_theta())
-            #weight_hist.append(Q.copy())
-            #lower_bounds.append(lower_bound)  
-            #plot_phase(X,self.theta,Q,self.topo,self.tau)
-            
-            ## check converged
-            change = lower_bound - prev_lower_bound
-            if abs(change) < tol:
-                self.converged = True
-                break
-                
-        return [Q, lower_bound]
+        
+        return self._fit(X, Q, self.theta, epoch, tol, parallel, n_threads)
     
     def fit_multi_init(self, X, m, n_init=3, epoch=10, tol=1e-4, parallel=False, n_threads=1, seed=42):
         """
@@ -312,19 +341,8 @@ class Trajectory:
             print("trial "+str(init+1))
             Q = self._initialize_Q(n)
             self._initialize_theta(X)
-            lower_bound = -np.inf
-            self.converged = False
-            for i in tqdm(range(epoch)):
-                print(lower_bound)
-                prev_lower_bound = lower_bound
-                self.update_theta(X,Q,parallel=parallel,n_threads=n_threads,miter=10000)
-                #beta=max(epoch-i,1)
-                beta=1
-                Q, lower_bound = self.update_weight(X,beta)
-                change = lower_bound - prev_lower_bound
-                if abs(change) < tol:
-                    self.converged = True
-                    break
+            
+            Q, lower_bound = self._fit(X, Q, self.theta, epoch, tol, parallel, n_threads)
                 
             if lower_bound > max_lower_bound or max_lower_bound == -np.inf:
                 max_lower_bound = lower_bound
@@ -335,11 +353,107 @@ class Trajectory:
             thetas.append(self._get_theta())
             
         self.theta = best_theta
-        return [best_Q, elbos, thetas]
+        return [best_Q, elbos]
     
+    def fit_restrictions(self, X, Q, theta, epoch=1, tol=1e-6, parallel=False, n_threads=1):
+        """
+        
+
+        Parameters
+        ----------
+        X : TYPE
+            DESCRIPTION.
+        Q : TYPE
+            DESCRIPTION.
+        theta : TYPE
+            DESCRIPTION.
+        epoch : TYPE, optional
+            DESCRIPTION. The default is 10.
+        tol : TYPE, optional
+            DESCRIPTION. The default is 1e-4.
+        parallel : TYPE, optional
+            DESCRIPTION. The default is False.
+        n_threads : TYPE, optional
+            DESCRIPTION. The default is 1.
+
+        Returns
+        -------
+        list
+            DESCRIPTION.
+
+        """
+                         
+        n, p, _ = np.shape(X)
+        gene_mask = np.ones(p,dtype=bool)
+        gene_idx = np.arange(p)
+        gene_mask[np.array(list(self.model_restrictions.keys()))] = False
+         
+        self.converged = False
+        lower_bound = -np.inf
+        self.theta = theta.copy()
+        m = Q.shape[-1]
+        self._set_m(m)
+        for i in tqdm(range(epoch)):
+            prev_lower_bound = lower_bound
+            self.update_theta(X,Q,gene_idx[gene_mask],parallel=parallel,n_threads=n_threads)      
+            self.update_nested_theta(X,Q,self.model_restrictions,parallel=parallel,n_threads=n_threads)
+            Q, lower_bound = self.update_weight(X)
+           ## check converged
+            change = lower_bound - prev_lower_bound
+            if abs(change) < tol:
+                self.converged = True
+                break
+                
+        return [Q, lower_bound]                 
+    
+
+    
+    def fit(self, X, Q=None, theta=None, m=100, n_init=10, epoch=10, tol=1e-4, parallel=False, n_threads=1, seed=42):
+        """
+        
+
+        Parameters
+        ----------
+        Q : TYPE, optional
+            DESCRIPTION. The default is None.
+        theta : TYPE, optional
+            DESCRIPTION. The default is None.
+        m : TYPE
+            DESCRIPTION.
+        n_init : TYPE, optional
+            DESCRIPTION. The default is 3.
+        epoch : TYPE, optional
+            DESCRIPTION. The default is 10.
+        tol : TYPE, optional
+            DESCRIPTION. The default is 1e-4.
+        parallel : TYPE, optional
+            DESCRIPTION. The default is False.
+        n_threads : TYPE, optional
+            DESCRIPTION. The default is 1.
+        seed : TYPE, optional
+            DESCRIPTION. The default is 42.
+
+        Returns
+        -------
+        None.
+
+        """
+            
+        if Q is not None or theta is not None:
+            print("run method fit_warm_start")
+            res = self.fit_warm_start(X, Q=Q, theta=theta, epoch=epoch, tol=tol, parallel=parallel, n_threads=n_threads)
+        else:
+            print("run method fit_multi_init")
+            res = self.fit_multi_init(X, m=m, n_init=n_init, epoch=epoch, tol=tol, parallel=parallel, n_threads=n_threads, seed=seed)
+        
+        if self.model_restrictions is not None:
+            print("run method fit_restrictions")     
+            res = self.fit_restrictions(X, res[0], self.theta)
+        
+        return res
     def compute_lower_bound(self,X):
         """
-        Compute approximation (lower bound) of log P(X|theta)
+        Compute the lower bound of marginal log likelihood log P(X|theta)
 
         Parameters
         ----------
@@ -362,7 +476,38 @@ class Trajectory:
         #logL += np.log(self.prior_) where self.prior_ = 1/L/m
         return np.mean(logsumexp(a=logL, axis=(-2,-1)))-np.log(self.m)-np.log(self.L)
 
-    def compare_model(self, X, new_model, parallel=False, n_threads=1):
+    
+    def compute_AIC(self, X):
+        """
+        
+
+        Parameters
+        ----------
+        X : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        """
+        n, p, s = np.shape(X)
+        
+        self.k = p * (self.n_states+4)      
+        if self.model_restrictions is not None:
+            for j in list(self.model_restrictions.keys()):
+                restrictions = self.model_restrictions[j]
+                redundant, blanket = restrictions
+                self.k -= len(redundant)
+                if len(redundant) > self.n_states:
+                    self.k -= 1
+
+        logL = self.compute_lower_bound(X)
+
+        return  get_AIC(logL,n,self.k)
+    
+    
+    def compare_model(self, X, new_model, epoch=1, tol=1e-4, parallel=False, n_threads=1):
         """
         
 
@@ -381,12 +526,12 @@ class Trajectory:
         if not hasattr(self, 'theta'):
             raise NameError("self.theta not defined. Run fit first")
         
-        n, p, _ = X.shape
+        n, p, s = X.shape
         
         ##### Store the old model and compute relative AIC #####
         if not hasattr(self, 'ori_theta'):
             self.ori_theta = self.theta.copy()
-            self.ori_AIC = -2 * n * self.compute_lower_bound(X)
+            self.ori_AIC = self.compute_AIC(X)
             
         ##### update theta with restrictions #####
         Q , _ = self.update_weight(X)
@@ -394,15 +539,16 @@ class Trajectory:
         self.update_nested_theta(X,Q,new_model,parallel=parallel,n_threads=n_threads)
         
         ##### check AIC with old theta + new nested theta #####
-        k = 0
+        Q , logL = self.update_weight(X)
+        k = p * (self.n_states+4)
         for j in list(new_model.keys()):
             restrictions = new_model[j]
             redundant, blanket = restrictions
             k -= len(redundant)
             if len(redundant) > self.n_states:
                 k -= 1
-        Q , logL = self.update_weight(X)
-        self.new_AIC = -2 * n * logL + 2 * k
+                
+        self.new_AIC = get_AIC(logL,n,k)
         
         ##### if the nested model is better, return True #####
         if self.new_AIC < self.ori_AIC:
@@ -411,16 +557,8 @@ class Trajectory:
         ##### else, update the whole theta and check agian #####
         else:      
             ##### update all theta with new weight #####
-            gene_mask = np.ones(p,dtype=bool)
-            gene_idx = np.arange(p)
-            gene_mask[np.array(list(new_model.keys()))] = False
-            
-            self.update_theta(X,Q,gene_idx[gene_mask],parallel=parallel,n_threads=n_threads)      
-            self.update_nested_theta(X,Q,new_model,parallel=parallel,n_threads=n_threads)
-            
-            ##### compute AIC and compare #####
-            Q , logL = self.update_weight(X)
-            self.new_AIC = -2 * n * logL + 2 * k
+            Q, logL = self.fit_restrictions(X, Q, self.theta, epoch, tol, parallel, n_threads)
+            self.new_AIC = get_AIC(logL,n,k)
             
             if self.new_AIC < self.ori_AIC:
                 accept = True  

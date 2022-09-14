@@ -1,13 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+from basic import get_Y
 from trajectory import Trajectory
 from utils import simulate_data
 from plotting import plot_phase, plot_t, plot_theta
 
 if __name__ == "__main__":  
     
-    topo = np.array([[0],[1]])
+    topo = np.array([[0]])
     tau=(0,1)
     n = 2000
     p = 20
@@ -17,9 +18,8 @@ if __name__ == "__main__":
     #    theta[j,0:K] = theta[j,-4]
     #    theta[j,-3]=theta[j,-4]*theta[j,-2]/theta[j,-1]
     
-    #Y = get_Y(theta,t,tau)
     
-    #X = np.random.poisson(Y)
+    test_X = np.random.poisson(Y)
     
     plot_p = min(10, p)
     fig, ax = plt.subplots(1,plot_p,figsize=(6*plot_p,4))
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     
 
     
-
+    
 
     accepts = []
     diffs = []
@@ -77,23 +77,21 @@ if __name__ == "__main__":
     
     
     #%% test AIC
-    """
-    old_AIC = - 2 * n * traj_X.compute_lower_bound(X)
-    old_theta = traj_X.theta.copy()
-    nested_model = {0:[[1,-3],[-4,-4]], 1:[[1,-3],[-4,-4]]}
-    traj_X.theta = old_theta.copy()
-    for j in nested_model.keys():
-        traj_X.theta[j,0:-3]=np.mean(X[:,j,0])
-        traj_X.theta[j,-3]=np.mean(X[:,j,1])
-        traj_X.theta[j,-2]=1
-        traj_X.theta[j,-1]=np.mean(X[:,j,0])/np.mean(X[:,j,1])
-        
-    k = - ( K + 2 ) * 2
-    new_AIC = - 2 * n * traj_X.compute_lower_bound(X) + 2 * k
-    new_AIC - old_AIC
-    """
 
+    old_AIC = traj.compute_AIC(X)
+    test_AIC = -2 * traj.compute_lower_bound(test_X)
     
+    nested_model = {9:[[1,-3],[-4,-4]]}
+    
+    traj_nested = Trajectory(topo, tau, nested_model)
+    Q, logL = traj_nested.fit_restrictions(X, Q, traj.theta)      
+    
+    
+    new_AIC = traj_nested.compute_AIC(X)
+    new_test_AIC = -2 * traj_nested.compute_lower_bound(test_X)
+    new_AIC - old_AIC
+
+
     
     
     
