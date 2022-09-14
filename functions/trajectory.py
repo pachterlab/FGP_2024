@@ -29,12 +29,11 @@ class Trajectory:
     tau:     
     """
 
-    def __init__(self, topo, tau, model_restrictions=None):
+    def __init__(self, topo, tau):
         self.topo=topo
         self.tau=tau
         self.L=len(topo)
         self.n_states=len(set(topo.flatten()))
-        self.model_restrictions = model_restrictions
         return None
     
     def _set_m(self,m):
@@ -355,9 +354,8 @@ class Trajectory:
         self.theta = best_theta
         return [best_Q, elbos]
     
-    def fit_restrictions(self, X, Q, theta, epoch=1, tol=1e-6, parallel=False, n_threads=1):
+    def fit_restrictions(self, X, Q, theta, model_restrictions, epoch=1, tol=1e-6, parallel=False, n_threads=1):
         """
-        
 
         Parameters
         ----------
@@ -386,6 +384,7 @@ class Trajectory:
         n, p, _ = np.shape(X)
         gene_mask = np.ones(p,dtype=bool)
         gene_idx = np.arange(p)
+        self.model_restrictions = model_restrictions
         gene_mask[np.array(list(self.model_restrictions.keys()))] = False
          
         self.converged = False
@@ -408,7 +407,7 @@ class Trajectory:
     
 
     
-    def fit(self, X, Q=None, theta=None, m=100, n_init=10, epoch=10, tol=1e-4, parallel=False, n_threads=1, seed=42):
+    def fit(self, X, Q=None, theta=None, model_restrictions=None, m=100, n_init=10, epoch=10, tol=1e-4, parallel=False, n_threads=1, seed=42):
         """
         
 
@@ -446,11 +445,12 @@ class Trajectory:
             print("run method fit_multi_init")
             res = self.fit_multi_init(X, m=m, n_init=n_init, epoch=epoch, tol=tol, parallel=parallel, n_threads=n_threads, seed=seed)
         
-        if self.model_restrictions is not None:
+        if model_restrictions is not None:
             print("run method fit_restrictions")     
-            res = self.fit_restrictions(X, res[0], self.theta)
+            res = self.fit_restrictions(X, res[0], self.theta, model_restrictions)
         
         return res
+    
     def compute_lower_bound(self,X):
         """
         Compute the lower bound of marginal log likelihood log P(X|theta)
@@ -557,7 +557,7 @@ class Trajectory:
         ##### else, update the whole theta and check agian #####
         else:      
             ##### update all theta with new weight #####
-            Q, logL = self.fit_restrictions(X, Q, self.theta, epoch, tol, parallel, n_threads)
+            Q, logL = self.fit_restrictions(X, Q, self.theta, new_model, epoch, tol, parallel, n_threads)
             self.new_AIC = get_AIC(logL,n,k)
             
             if self.new_AIC < self.ori_AIC:
