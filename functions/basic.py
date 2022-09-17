@@ -4,6 +4,10 @@
 Created on Sun Aug 21 11:26:08 2022
 
 @author: fang
+
+This file defines functions (guess_theta, update_theta_j, update_theta_j, get_logL) for two species Poisson model. 
+theta for each gene contains transcription rate of each states, u_0, s_0, beta, gamma.
+
 """
 
 import numpy as np
@@ -12,6 +16,15 @@ from scipy.optimize import minimize
 
 # global parameters: upper and lower limits for numerical stability
 eps = 1e-10
+
+def guess_theta(X,n_states):
+    p = X.shape[1]
+    theta = np.zeros((p,n_states+4))
+    theta[:,0:-3]=np.mean(X[:,:,0],axis=0)[:,None]
+    theta[:,-3]=np.mean(X[:,:,1],axis=0)
+    theta[:,-2]=1
+    theta[:,-1] = np.mean(X[:,:,0],axis=0)/(np.mean(X[:,:,1],axis=0)+eps)
+    return theta
 
 #%% delta parameterization
 def get_y_delta(theta, t, tau):
@@ -463,7 +476,6 @@ def get_Y_a_old(theta, t, tau):
         raise ValueError("Nan in Y")
     return Y
 
-
 def neglogL_a(theta, x_weighted, marginal_weight, t, tau, topo):
     # theta: length K+4
     # x: n*2
@@ -493,6 +505,18 @@ def neglogL_a_jac(theta, x_weighted, marginal_weight, t, tau, topo):
         jac[theta_idx] += np.sum( coef [:,:,None] * dY_dtheta, axis=(0,1))
     return - jac
 
+def get_logL(X,theta,t,tau,topo):
+    L=len(topo)
+    m=len(t)
+    p=len(theta)
+    Y = np.zeros((L,m,p,2))
+    for l in range(L):
+        theta_l = np.concatenate((theta[:,topo[l]], theta[:,-4:]), axis=1)
+        Y[l] = get_Y(theta_l,t,tau) # m*p*2
+    
+    logL = np.tensordot(X, np.log(eps + Y), axes=([-2,-1],[-2,-1])) # logL:n*L*m
+    logL -= np.sum(Y,axis=(-2,-1))
+    return logL
 
 def update_theta_j_a_jac(theta0, x, Q, t, tau, topo, bnd=1000, bnd_beta=100, miter = 10000):
     bound = [[-bnd,bnd]]*len(theta0)

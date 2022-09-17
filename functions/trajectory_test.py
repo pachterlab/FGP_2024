@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from basic import get_Y
 from trajectory import Trajectory
 from utils import simulate_data
 from plotting import plot_phase, plot_t, plot_theta
@@ -79,7 +78,7 @@ if __name__ == "__main__":
     #%% test AIC
 
     old_AIC = traj.compute_AIC(X)
-    test_AIC = -2 * traj.compute_lower_bound(test_X)
+    test_AIC = -2* traj.compute_lower_bound(test_X)
     
     nested_model = {9:[[1,-3],[-4,-4]]}
     

@@ -10,7 +10,7 @@ import numpy as np
 from tqdm import tqdm
 from multiprocessing import Pool
 from scipy.special import logsumexp
-from basic import get_Y, update_theta_j, update_nested_theta_j
+from basic import guess_theta, get_logL, update_theta_j, update_nested_theta_j
     
 eps = 1e-10
 
@@ -34,6 +34,7 @@ class Trajectory:
         self.tau=tau
         self.L=len(topo)
         self.n_states=len(set(topo.flatten()))
+        self.model_restrictions=None
         return None
     
     def _set_m(self,m):
@@ -44,12 +45,7 @@ class Trajectory:
         return self.theta.copy()
     
     def _initialize_theta(self, X):
-        p = X.shape[1]
-        self.theta = np.zeros((p,self.n_states+4))
-        self.theta[:,0:-3]=np.mean(X[:,:,0],axis=0)[:,None]
-        self.theta[:,-3]=np.mean(X[:,:,1],axis=0)
-        self.theta[:,-2]=1
-        self.theta[:,-1] = np.mean(X[:,:,0],axis=0)/(np.mean(X[:,:,1],axis=0)+eps)
+        self.theta = guess_theta(X,self.n_states)
         return 
     
     def _initialize_Q(self, n):
@@ -59,10 +55,33 @@ class Trajectory:
 
     def update_theta(self,X,Q,gene_idx=None,parallel=False,n_threads=1,bnd=1000,bnd_beta=100,miter=1000):
         """
+        Update theta for each gene in gene_idx using update_theta_j function
+
+        Parameters
+        ----------
+        X : TYPE
+            DESCRIPTION.
+        Q : TYPE
+            DESCRIPTION.
+        gene_idx : list/1d array, optional
+            DESCRIPTION. The default is None.
+        parallel : TYPE, optional
+            DESCRIPTION. The default is False.
+        n_threads : TYPE, optional
+            DESCRIPTION. The default is 1.
+        bnd : TYPE, optional
+            DESCRIPTION. The default is 1000.
+        bnd_beta : TYPE, optional
+            DESCRIPTION. The default is 100.
+        miter : TYPE, optional
+            DESCRIPTION. The default is 1000.
+
+        Returns
+        -------
+        None.
 
         """
-        n,L,m = np.shape(Q)
-        n,p,_ = np.shape(X)
+        p, n_theta = self.theta.shape
             
         if gene_idx is None:
             gene_idx = np.arange(p)
@@ -75,7 +94,7 @@ class Trajectory:
                 new_theta = pool.starmap(update_theta_j, Input_args)
             new_theta = np.array(new_theta)
         else:
-            new_theta = np.zeros((len(gene_idx),self.n_states+4))
+            new_theta = np.zeros((len(gene_idx),n_theta))
             for i,j in enumerate(gene_idx): 
                 new_theta[i]=update_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, bnd, bnd_beta,miter)
                 
@@ -83,9 +102,10 @@ class Trajectory:
         return
     
     
-    def update_nested_theta(self,X,Q,nested_model,parallel=False,n_threads=1,bnd=1000,bnd_beta=100,miter=1000):
+    def update_nested_theta(self,X,Q,model_restrictions,parallel=False,n_threads=1,bnd=1000,bnd_beta=100,miter=1000):
         """
-
+        Update theta for each gene with restriction defined in model_restrictions using update_nested_theta_j function
+        
         Parameters
         ----------
         X : TYPE
@@ -117,22 +137,22 @@ class Trajectory:
         None.
 
         """
-        n,L,m = np.shape(Q)
-        n,p,s=np.shape(X)
+        
+        p, n_theta = self.theta.shape
 
-        gene_idx = np.array(list(nested_model.keys()))
+        gene_idx = np.array(list(model_restrictions.keys()))
         if parallel is True:
             Input_args = []           
             for j in gene_idx:
-                Input_args.append((self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, nested_model[j], bnd, bnd_beta, miter))                
+                Input_args.append((self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, model_restrictions[j], bnd, bnd_beta, miter))                
             with Pool(n_threads) as pool:      
                 new_theta = pool.starmap(update_nested_theta_j, Input_args)
             new_theta = np.array(new_theta)
             
         else:
-            new_theta = np.zeros((len(gene_idx),self.n_states+4))
+            new_theta = np.zeros((len(gene_idx),n_theta))
             for i,j in enumerate(gene_idx):
-                new_theta[i]=update_nested_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, nested_model[j], bnd, bnd_beta, miter)
+                new_theta[i]=update_nested_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, model_restrictions[j], bnd, bnd_beta, miter)
                 
         self.theta[gene_idx] = new_theta
         return 
@@ -163,16 +183,21 @@ class Trajectory:
         if not hasattr(self, 'theta'):
             raise AttributeError("self.theta not defined")
             
-        n,p,s=np.shape(X)
-        Y = np.zeros((self.L,self.m,p,2))
-        for l in range(self.L):
-            theta_l = np.concatenate((self.theta[:,self.topo[l]], self.theta[:,-4:]), axis=1)
-            Y[l] = get_Y(theta_l,self.t,self.tau) # m*p*2
+        #n,p,s=np.shape(X)
+        
+        logl = get_logL(X,self.theta,self.t,self.tau,self.topo) # with size (n,self.L,self.m)
+        
+        #Y = np.zeros((self.L,self.m,p,2))
+        #for l in range(self.L):
+            #theta_l = np.concatenate((self.theta[:,self.topo[l]], self.theta[:,-4:]), axis=1)
+            #Y[l] = get_Y(theta_l,self.t,self.tau) # m*p*2
+            
         #logL =  np.sum(X[:,None,None,:,:] * np.log(Y[None,:]+eps) - Y[None,:], axis=(-2,-1)) # n*L*m*p*2 -> n*L*m
-        logl = np.tensordot(X, np.log(eps + Y),axes=([-2,-1],[-2,-1]))
-        logl -= np.sum(Y,axis = (-2,-1))
-        #logL += np.log(self.prior_) where self.prior_ = 1/L/m
+        #logl = np.tensordot(X, np.log(eps + Y),axes=([-2,-1],[-2,-1]))
+        #logl -= np.sum(Y,axis = (-2,-1))
+        
         logL = logl/beta
+        #logL += np.log(self.prior_) where self.prior_ = 1/L/m
         #Q = softmax(logL, axis=(-2,-1))
         a = np.amax(logL,axis=(-2,-1))
         temp = np.exp(logL-a[:,None,None])
@@ -264,8 +289,6 @@ class Trajectory:
             DESCRIPTION.
 
         """
-        
-        n, p, _ = np.shape(X)
         
         
         if theta is not None:
@@ -465,15 +488,16 @@ class Trajectory:
         scalar
             lower bound value
         """
-        n,p,_=np.shape(X)
-        Y = np.zeros((self.L,self.m,p,2))
-        for l in range(self.L):
-            theta_l = np.concatenate((self.theta[:,self.topo[l]], self.theta[:,-4:]), axis=1)
-            Y[l] = get_Y(theta_l,self.t,self.tau) # m*p*2
+        #n,p,_=np.shape(X)
+        #Y = np.zeros((self.L,self.m,p,2))
+        #for l in range(self.L):
+        #    theta_l = np.concatenate((self.theta[:,self.topo[l]], self.theta[:,-4:]), axis=1)
+        #    Y[l] = get_Y(theta_l,self.t,self.tau) # m*p*2
         #logL =  np.sum(X[:,None,None,:,:] * np.log(Y[None,:]+eps) - Y[None,:], axis=(-2,-1)) # n*L*m*p*2 -> n*L*m
-        logL = np.tensordot(X, np.log(eps + Y), axes=([-2,-1],[-2,-1])) # logL:n*L*m
-        logL -= np.sum(Y,axis=(-2,-1))
+        #logL = np.tensordot(X, np.log(eps + Y), axes=([-2,-1],[-2,-1])) # logL:n*L*m
+        #logL -= np.sum(Y,axis=(-2,-1))
         #logL += np.log(self.prior_) where self.prior_ = 1/L/m
+        logL = get_logL(X,self.theta,self.t,self.tau,self.topo) # with size (n,self.L,self.m)
         return np.mean(logsumexp(a=logL, axis=(-2,-1)))-np.log(self.m)-np.log(self.L)
 
     
@@ -493,7 +517,8 @@ class Trajectory:
         """
         n, p, s = np.shape(X)
         
-        self.k = p * (self.n_states+4)      
+        self.k = self.theta.size
+        
         if self.model_restrictions is not None:
             for j in list(self.model_restrictions.keys()):
                 restrictions = self.model_restrictions[j]
@@ -532,6 +557,7 @@ class Trajectory:
         if not hasattr(self, 'ori_theta'):
             self.ori_theta = self.theta.copy()
             self.ori_AIC = self.compute_AIC(X)
+            self.ori_model = self.model_restrictions.copy()
             
         ##### update theta with restrictions #####
         Q , _ = self.update_weight(X)
@@ -565,6 +591,8 @@ class Trajectory:
             else:
                 accept = False
                 
+        # return to original model
         self.new_theta = self.theta.copy()
-        self.theta = self.ori_theta.copy() # return to original model
+        self.theta = self.ori_theta.copy() 
+        self.model_restrictions = self.ori_model.copy()
         return accept, self.new_AIC - self.ori_AIC

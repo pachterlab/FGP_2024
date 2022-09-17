@@ -24,7 +24,7 @@ def plot_t(weight,l=0,ax=None,t=None):
                  verticalalignment='top', transform=ax.transAxes, color="white");
     else:
         ord=np.argsort(t_hat)
-        ax.imshow(weight[ord,:],aspect="auto");
+        ax.imshow(weight[ord,l,:],aspect="auto");
 
 def plot_theta(theta,theta_hat):
     K=np.shape(theta)[1]-4
