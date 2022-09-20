@@ -5,7 +5,7 @@ Created on Tue Aug 23 22:22:42 2022
 
 @author: fang
 """
-
+import itertools
 import numpy as np
 from tqdm import tqdm
 from multiprocessing import Pool
@@ -45,15 +45,15 @@ class Trajectory:
         return self.theta.copy()
     
     def _initialize_theta(self, X):
-        self.theta = guess_theta(X,self.n_states)
+        self.theta=guess_theta(X,self.n_states)
         return 
     
     def _initialize_Q(self, n):
-        Q=10+np.random.uniform(0,1,(n,self.L,self.m))
+        Q=np.random.uniform(0,1,size=(n,self.L,self.m))
         Q=Q/Q.sum(axis=(-2,-1),keepdims=True)
         return Q
 
-    def update_theta(self,X,Q,gene_idx=None,parallel=False,n_threads=1,bnd=1000,bnd_beta=100,miter=1000):
+    def update_theta(self,X,Q,gene_idx=None,parallel=False,n_threads=1,bnd=1000,bnd_beta=100,miter=10000):
         """
         Update theta for each gene in gene_idx using update_theta_j function
 
@@ -102,7 +102,7 @@ class Trajectory:
         return
     
     
-    def update_nested_theta(self,X,Q,model_restrictions,parallel=False,n_threads=1,bnd=1000,bnd_beta=100,miter=1000):
+    def update_nested_theta(self,X,Q,model_restrictions,parallel=False,n_threads=1,bnd=1000,bnd_beta=100,miter=10000):
         """
         Update theta for each gene with restriction defined in model_restrictions using update_nested_theta_j function
         
@@ -201,15 +201,15 @@ class Trajectory:
         #Q = softmax(logL, axis=(-2,-1))
         a = np.amax(logL,axis=(-2,-1))
         temp = np.exp(logL-a[:,None,None])
-        tempt_sum = temp.sum(axis=(-2,-1))
-        Q = temp/tempt_sum[:,None,None]
+        temp_sum = temp.sum(axis=(-2,-1))
+        Q = temp/temp_sum[:,None,None]
         if beta == 1:
-            lower_bound = np.mean( np.log(tempt_sum) + a )  - np.log(self.m) - np.log(self.L)
+            lower_bound = np.mean( np.log(temp_sum) + a )  - np.log(self.m) - np.log(self.L)
         else:
             lower_bound = np.mean(logsumexp(logl, axis=(-2,-1))) - np.log(self.m) - np.log(self.L)
         return Q, lower_bound
     
-    def _fit(self, X, Q, theta, epoch, tol, parallel, n_threads):
+    def _fit(self, X, theta, epoch, tol, parallel, n_threads):
         """
         The method fits the model by iterating between E-step and M-step for at most `epoch` iterations.
         The warm start means that either a reasonable Q or theta is provided.
@@ -219,8 +219,6 @@ class Trajectory:
         ----------
         X : ndarray, shape (n, p, 2)
             n cells * p genes * 2 species data matrix.
-        Q : TYPE
-            DESCRIPTION.
         epoch : TYPE, optional
             DESCRIPTION. The default is 10.
         tol : TYPE, optional
@@ -247,8 +245,9 @@ class Trajectory:
         self.theta = theta.copy()
         for i in tqdm(range(epoch)):
             prev_lower_bound = lower_bound
+            beta = 1 #epoch - i
+            Q, lower_bound = self.update_weight(X, beta)
             self.update_theta(X,Q,parallel=parallel,n_threads=n_threads)
-            Q, lower_bound = self.update_weight(X)
             
             ## check converged
             change = lower_bound - prev_lower_bound
@@ -290,24 +289,16 @@ class Trajectory:
 
         """
         
-        
-        if theta is not None:
-            self.theta=theta.copy()
-            if Q is not None:
-                n, L, m = Q.shape
-            else:
-                m = 100
-            self._set_m(m)
-            Q, lower_bound = self.update_weight(X)
-            
-        else:
-            self._initialize_theta(X)
+        if theta is None:
             if Q is not None:
                 n, L, m = Q.shape
                 self._set_m(m)
+                self._initialize_theta(X)
+                self.update_theta(X,Q,parallel=parallel,n_threads=n_threads)
+                theta = self.theta.copy()
             else:
                 raise AssertionError("either theta or Q needs to be provided")
-                
+            
         #self.prior_ = np.ones_like(Q)/L/m
 
         #theta_hist=[] 
@@ -316,7 +307,7 @@ class Trajectory:
         #theta_hist.append(self._get_theta())
         #weight_hist.append(Q.copy())
         
-        return self._fit(X, Q, self.theta, epoch, tol, parallel, n_threads)
+        return self._fit(X, theta, epoch, tol, parallel, n_threads)
     
     def fit_multi_init(self, X, m, n_init=3, epoch=10, tol=1e-4, parallel=False, n_threads=1, seed=42):
         """
@@ -353,28 +344,35 @@ class Trajectory:
         n, p, _ = np.shape(X)
      
         self._set_m(m)
-        np.random.seed(seed)
-        
         elbos = []
         thetas = []
-
         max_lower_bound = -np.inf
+        
+        np.random.seed(seed)
         for init in range(n_init):
             print("trial "+str(init+1))
             Q = self._initialize_Q(n)
             self._initialize_theta(X)
+            self.update_theta(X,Q,parallel=parallel,n_threads=n_threads)
+            theta0 = self.theta.copy()
             
-            Q, lower_bound = self._fit(X, Q, self.theta, epoch, tol, parallel, n_threads)
+            ## For each initialization, test all configurations
+            for perm in itertools.permutations(range(self.n_states+1)):
+                theta = theta0.copy()
+                theta[:,:self.n_states+1] = theta0[:,np.array(perm)]
                 
-            if lower_bound > max_lower_bound or max_lower_bound == -np.inf:
-                max_lower_bound = lower_bound
-                best_theta = self._get_theta()
-                best_Q = Q.copy()
-                    
-            elbos.append(lower_bound)
-            thetas.append(self._get_theta())
+                Q, lower_bound = self._fit(X, theta, epoch, tol, parallel, n_threads)
+
+                if lower_bound > max_lower_bound or max_lower_bound == -np.inf:
+                    max_lower_bound = lower_bound
+                    best_theta = self._get_theta()
+                    best_Q = Q.copy()
+
+                elbos.append(lower_bound)
+                thetas.append(self._get_theta())
             
         self.theta = best_theta
+        self.thetas = thetas
         return [best_Q, elbos]
     
     def fit_restrictions(self, X, Q, theta, model_restrictions, epoch=1, tol=1e-6, parallel=False, n_threads=1):
@@ -415,11 +413,12 @@ class Trajectory:
         self.theta = theta.copy()
         m = Q.shape[-1]
         self._set_m(m)
-        for i in tqdm(range(epoch)):
+        for i in range(epoch):
             prev_lower_bound = lower_bound
+            Q, lower_bound = self.update_weight(X)
             self.update_theta(X,Q,gene_idx[gene_mask],parallel=parallel,n_threads=n_threads)      
             self.update_nested_theta(X,Q,self.model_restrictions,parallel=parallel,n_threads=n_threads)
-            Q, lower_bound = self.update_weight(X)
+            
            ## check converged
             change = lower_bound - prev_lower_bound
             if abs(change) < tol:
@@ -430,7 +429,7 @@ class Trajectory:
     
 
     
-    def fit(self, X, Q=None, theta=None, model_restrictions=None, m=100, n_init=10, epoch=10, tol=1e-4, parallel=False, n_threads=1, seed=42):
+    def fit(self, X, Q=None, theta=None, model_restrictions=None, m=100, n_init=3, epoch=20, tol=1e-4, parallel=False, n_threads=1, seed=42):
         """
         
 
@@ -460,7 +459,9 @@ class Trajectory:
         None.
 
         """
-            
+        
+        self._set_m(m)
+        
         if Q is not None or theta is not None:
             print("run method fit_warm_start")
             res = self.fit_warm_start(X, Q=Q, theta=theta, epoch=epoch, tol=tol, parallel=parallel, n_threads=n_threads)
@@ -557,7 +558,10 @@ class Trajectory:
         if not hasattr(self, 'ori_theta'):
             self.ori_theta = self.theta.copy()
             self.ori_AIC = self.compute_AIC(X)
-            self.ori_model = self.model_restrictions.copy()
+            if self.model_restrictions is not None:
+                self.ori_model = self.model_restrictions.copy()
+            else:
+                self.ori_model = None
             
         ##### update theta with restrictions #####
         Q , _ = self.update_weight(X)
@@ -594,5 +598,8 @@ class Trajectory:
         # return to original model
         self.new_theta = self.theta.copy()
         self.theta = self.ori_theta.copy() 
-        self.model_restrictions = self.ori_model.copy()
+        if self.ori_model is not None:
+            self.model_restrictions = self.ori_model.copy()
+        else:
+            self.model_restrictions = None
         return accept, self.new_AIC - self.ori_AIC

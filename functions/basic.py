@@ -12,6 +12,8 @@ theta for each gene contains transcription rate of each states, u_0, s_0, beta, 
 
 import numpy as np
 from scipy.optimize import minimize
+from scipy.stats import poisson
+from scipy.special import gammaln
 
 
 # global parameters: upper and lower limits for numerical stability
@@ -513,9 +515,11 @@ def get_logL(X,theta,t,tau,topo):
     for l in range(L):
         theta_l = np.concatenate((theta[:,topo[l]], theta[:,-4:]), axis=1)
         Y[l] = get_Y(theta_l,t,tau) # m*p*2
-    
+        
     logL = np.tensordot(X, np.log(eps + Y), axes=([-2,-1],[-2,-1])) # logL:n*L*m
     logL -= np.sum(Y,axis=(-2,-1))
+    logX = np.sum(gammaln(X+1),axis=(-2,-1),keepdims=True)
+    logL -= logX
     return logL
 
 def update_theta_j_a_jac(theta0, x, Q, t, tau, topo, bnd=1000, bnd_beta=100, miter = 10000):
