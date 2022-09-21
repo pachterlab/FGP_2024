@@ -1,0 +1,41 @@
+[I 20:15:58.544 NotebookApp] Serving notebooks from local directory: /home/mffang/workspace/Trajectory/Poisson-regression
+[I 20:15:58.544 NotebookApp] Jupyter Notebook 6.4.11 is running at:
+[I 20:15:58.545 NotebookApp] http://localhost:8888/?token=a29a10dfb66ac6a91182fb02c9c3b6b8cb54993f5ffa1717
+[I 20:15:58.545 NotebookApp]  or http://127.0.0.1:8888/?token=a29a10dfb66ac6a91182fb02c9c3b6b8cb54993f5ffa1717
+[I 20:15:58.545 NotebookApp] Use Control-C to stop this server and shut down all kernels (twice to skip confirmation).
+[C 20:15:58.572 NotebookApp] 
+    
+    To access the notebook, open this file in a browser:
+        file:///home/mffang/.local/share/jupyter/runtime/nbserver-5707-open.html
+    Or copy and paste one of these URLs:
+        http://localhost:8888/?token=a29a10dfb66ac6a91182fb02c9c3b6b8cb54993f5ffa1717
+     or http://127.0.0.1:8888/?token=a29a10dfb66ac6a91182fb02c9c3b6b8cb54993f5ffa1717
+[I 20:16:43.269 NotebookApp] 302 GET / (::1) 1.130000ms
+[I 20:18:12.278 NotebookApp] Kernel started: c0565b35-a22e-4fc4-99c6-d9d49a841b46, name: python3
+[W 20:18:14.162 NotebookApp] 404 GET /nbextensions/widgets/notebook/js/extension.js?v=20220920201556 (::1) 78.480000ms referer=http://localhost:8080/notebooks/notebooks/forebrain.ipynb
+[I 20:20:14.295 NotebookApp] Saving file at /notebooks/forebrain.ipynb
+[I 20:22:13.788 NotebookApp] Saving file at /notebooks/forebrain.ipynb
+[I 20:24:13.797 NotebookApp] Saving file at /notebooks/forebrain.ipynb
+[I 20:26:13.789 NotebookApp] Saving file at /notebooks/forebrain.ipynb
+[I 20:27:51.847 NotebookApp] Kernel interrupted: c0565b35-a22e-4fc4-99c6-d9d49a841b46
+[I 20:28:13.830 NotebookApp] Saving file at /notebooks/forebrain.ipynb
+[I 20:28:45.526 NotebookApp] Kernel interrupted: c0565b35-a22e-4fc4-99c6-d9d49a841b46
+[I 20:29:36.406 NotebookApp] Kernel interrupted: c0565b35-a22e-4fc4-99c6-d9d49a841b46
+[I 20:29:40.455 NotebookApp] Starting buffering for c0565b35-a22e-4fc4-99c6-d9d49a841b46:5a716c3834f840cd8ae573ea78a2300d
+[I 20:29:41.197 NotebookApp] Kernel restarted: c0565b35-a22e-4fc4-99c6-d9d49a841b46
+[I 20:29:41.263 NotebookApp] Restoring connection for c0565b35-a22e-4fc4-99c6-d9d49a841b46:5a716c3834f840cd8ae573ea78a2300d
+[I 20:29:42.276 NotebookApp] Replaying 3 buffered messages
+[I 20:30:13.779 NotebookApp] Saving file at /notebooks/forebrain.ipynb
+[I 20:30:42.575 NotebookApp] Kernel interrupted: c0565b35-a22e-4fc4-99c6-d9d49a841b46
+[I 20:32:08.258 NotebookApp] Kernel interrupted: c0565b35-a22e-4fc4-99c6-d9d49a841b46
+[I 20:32:11.720 NotebookApp] Starting buffering for c0565b35-a22e-4fc4-99c6-d9d49a841b46:5a716c3834f840cd8ae573ea78a2300d
+[I 20:32:12.468 NotebookApp] Kernel restarted: c0565b35-a22e-4fc4-99c6-d9d49a841b46
+[I 20:32:12.846 NotebookApp] Restoring connection for c0565b35-a22e-4fc4-99c6-d9d49a841b46:5a716c3834f840cd8ae573ea78a2300d
+[I 20:32:13.216 NotebookApp] Replaying 3 buffered messages
+[I 20:32:13.793 NotebookApp] Saving file at /notebooks/forebrain.ipynb
+[I 20:33:36.505 NotebookApp] Kernel interrupted: c0565b35-a22e-4fc4-99c6-d9d49a841b46
+[I 20:34:13.786 NotebookApp] Saving file at /notebooks/forebrain.ipynb
+[I 20:34:23.648 NotebookApp] Kernel interrupted: c0565b35-a22e-4fc4-99c6-d9d49a841b46
+[I 20:34:26.258 NotebookApp] Saving file at /notebooks/forebrain.ipynb
+[I 09:52:30.329 NotebookApp] Starting buffering for c0565b35-a22e-4fc4-99c6-d9d49a841b46:5a716c3834f840cd8ae573ea78a2300d
+[I 09:53:01.514 NotebookApp] Restoring connection for c0565b35-a22e-4fc4-99c6-d9d49a841b46:5a716c3834f840cd8ae573ea78a2300d
