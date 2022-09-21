@@ -28,7 +28,7 @@ def guess_theta(X,n_states):
 
 
 
-def get_y_a(theta, t, tau):
+def get_y(theta, t, tau):
     # theta: a_1, ..., a_K, u_0, s_0, beta, gamma
     # t: len m
     # tau: len K+1
@@ -71,7 +71,7 @@ def get_y_a(theta, t, tau):
         raise ValueError("Nan in Y")
     return Y
 
-def get_y_a_jac(theta, t, tau):
+def get_y_jac(theta, t, tau):
     # theta: a_1, ..., a_K, u_0, s_0, beta, gamma
     # t: len m
     # tau: len K+1
@@ -199,81 +199,8 @@ def get_Y(theta, t, tau):
         raise ValueError("Nan in Y")
     return Y
 
-
-def get_Y_a_old(theta, t, tau):
-    # theta: p*(K+4)
-    # t: len m
-    # tau: len K+1
-    # return m * p * 2
-    p = len(theta)
-    K = len(tau)-1 # number of states
-    if np.shape(theta)[1]!=K+4:
-        raise TypeError("wrong parameters lengths")
-    a = theta[:,0:K]
-    beta = theta[:,-2]
-    gamma = theta[:,-1]
-    y1_0 = theta[:,-4]
-    y2_0 = theta[:,-3]
-    t = t.reshape(-1,1)
-    m = len(t)
-    I = np.ones((K+1,m),dtype=bool)
-    
-    # nascent
-    y1=np.zeros((m,p))
-    y1=y1+y1_0[None,:]*np.exp(-beta[None,:]*t)   
-    for k in range(1,K+1):
-        I[k] = np.squeeze(t > tau[k])
-        idx =I[k-1]*(~I[k]) # tau_{k-1} < t_i <= tau_k
-        y1[I[k]] = y1[I[k]] + a[None,:,k-1] * (np.exp(- beta[None,:]*(t[I[k]]-tau[k]))- np.exp(-beta[None,:]* (t[I[k]]-tau[k-1])) ) 
-        y1[idx] = y1[idx] + a[None,:,k-1] * (1 - np.exp(- beta[None,:] *(t[idx]-tau[k-1]))) 
-
-    if np.sum(np.isnan(y1)) != 0:
-        raise ValueError("Nan in y1")
-    Y =np.zeros((m,p,2))
-    Y[:,:,0] = y1
-    
-    # mature + c * nascent 
-    ## nondegenrate cases
-    nondegenerate = np.abs(beta-gamma)>eps # indices of genes having similar gamma and beta
-    if np.sum(nondegenerate)>0:
-        y =np.zeros((m,np.sum(nondegenerate)))
-        beta_, gamma_ = beta[nondegenerate], gamma[nondegenerate]
-        c = beta_/(beta_-gamma_)
-        d = beta_**2/((beta_-gamma_)*gamma_)
-        y_0 = y2_0[nondegenerate] + c*y1_0[nondegenerate]
-        a_ = d[:,None]*a[nondegenerate,:]
-
-        y=y+y_0[None,:]*np.exp(-gamma_[None,:]*t)    
-        for k in range(1,K+1):
-            idx =I[k-1]*(~I[k]) # tau_{k-1} < t_i <= tau_k
-            y[I[k]] = y[I[k]] + a_[None,:,k-1] * (np.exp(-gamma_[None,:] * (t[I[k]]-tau[k]))- np.exp(-gamma_[None,:]*(t[I[k]]-tau[k-1])) )
-            y[idx] = y[idx] +  a_[None,:,k-1] * (1 - np.exp(-gamma_[None,:]*(t[idx]-tau[k-1]))) 
-
-        if np.sum(np.isnan(y)) != 0:
-            raise ValueError("Nan in y")
-
-        Y[:,nondegenerate,1] = y-c*y1[:,nondegenerate]
-    
-    ## nondegenrate cases
-    degenerate = ~nondegenerate
-    if np.sum(degenerate)>0:
-        y = np.zeros((m,np.sum(degenerate)))
-        y = y + y1_0[None,degenerate]*beta[None,degenerate]*t*np.exp(-beta[None,degenerate]*t) + y2_0[None,degenerate]*np.exp(-gamma[None,degenerate]*t) 
-        for k in range(1,K+1):
-            idx =I[k-1]*(~I[k]) # tau_{k-1} < t_i <= tau_k with a[k-1]
-            y[I[k]] = y[I[k]] + a[None,degenerate,k-1]*beta[None,degenerate]*((t[I[k]]-tau[k])*(np.exp(- beta[None,degenerate]*(t[I[k]]-tau[k])) - np.exp(- beta[None,degenerate]*(t[I[k]]-tau[k-1]))))    
-            y[I[k]] = y[I[k]] + a[None,degenerate,k-1] * (np.exp(- beta[None,degenerate]*(t[I[k]]-tau[k])) - np.exp(- beta[None,degenerate] *(t[I[k]]-tau[k-1])) \
-                                             - beta[None,degenerate] *(tau[k]-tau[k-1])*np.exp(- beta[None,degenerate] *(t[I[k]]-tau[k-1])))
-            y[idx] = y[idx] + a[None,degenerate,k-1] * (1 - np.exp(-beta[None,degenerate]*(t[idx]-tau[k-1]))\
-                                             - beta[None,degenerate] *(t[idx]-tau[k-1])*np.exp(- beta[None,degenerate]*(t[idx]-tau[k-1]))) 
-        Y[:,degenerate,1] = y
-    
-    if np.sum(np.isnan(Y)) != 0:
-        raise ValueError("Nan in Y")
-    return Y
-
-   
-def neglogL_a(theta, x_weighted, marginal_weight, t, tau, topo, penalty=1):
+ 
+def neglogL_L1(theta, x_weighted, marginal_weight, t, tau, topo, penalty=10):
     # theta: length K+4
     # x: n*2
     # Q: n*L*m
@@ -282,18 +209,20 @@ def neglogL_a(theta, x_weighted, marginal_weight, t, tau, topo, penalty=1):
     logL = 0
     for l in range(len(topo)):
         theta_l = np.concatenate((theta[topo[l]], theta[-4:]))
-        Y = get_y_a(theta_l,t,tau) # m*2
+        Y = get_y(theta_l,t,tau) # m*2
         logL += np.sum( x_weighted[l] * np.log(eps + Y) - marginal_weight[l]*Y )
         
-    for l in range(len(topo)):
-        logL -= np.abs(theta[topo[0]]-theta[-4])
-        for s in range(1,len(topo[l])):
-            logL -= np.abs(theta[topo[s]]-theta[topo[s-1]])
+    
+    for lineage in topo:
+        logL -= penalty*np.abs(theta[lineage[0]]-theta[-4])
+        if len(lineage)>1:
+            for s in range(1,len(lineage)):
+                logL -= penalty*np.abs(theta[lineage[s]]-theta[lineage[s-1]])
         #logL -= np.abs(theta[-3]*theta[-1]/theta[-2]-theta[-4])
     return - logL
 
 
-def neglogL_a_jac(theta, x_weighted, marginal_weight, t, tau, topo):
+def neglogL_jac(theta, x_weighted, marginal_weight, t, tau, topo):
     # theta: length K+4
     # x: n*2
     # Q: n*L*m
@@ -303,7 +232,7 @@ def neglogL_a_jac(theta, x_weighted, marginal_weight, t, tau, topo):
     for l in range(len(topo)):
         theta_idx = np.append(topo[l],[-4,-3,-2,-1])
         theta_l = theta[theta_idx]
-        Y, dY_dtheta = get_y_a_jac(theta_l,t,tau) # m*2*len(theta)
+        Y, dY_dtheta = get_y_jac(theta_l,t,tau) # m*2*len(theta)
         coef =  x_weighted[l] / (eps + Y) - marginal_weight[l]
         jac[theta_idx] += np.sum( coef [:,:,None] * dY_dtheta, axis=(0,1))
     
@@ -325,7 +254,7 @@ def get_logL(X,theta,t,tau,topo):
     return logL
 
 
-def update_theta_j(theta0, x, Q, t, tau, topo, bnd=1000, bnd_beta=100, miter=100000):
+def update_theta_j(theta0, x, Q, t, tau, topo, bnd=1000, bnd_beta=100, miter=1000):
     """
     with jac
 
@@ -367,10 +296,10 @@ def update_theta_j(theta0, x, Q, t, tau, topo, bnd=1000, bnd_beta=100, miter=100
         x_weighted[l] = weight_l.T@x # m*2 = m*n @ n*2
         marginal_weight[l] =  weight_l.sum(axis=0)[:,None] # m*1
     
-    res = minimize(fun=neglogL_a, x0=theta0, args=(x_weighted,marginal_weight,t,tau,topo), method = 'L-BFGS-B' , jac = None, bounds=bound, options={'maxiter': miter,'disp': False}) 
+    res = minimize(fun=neglogL_L1, x0=theta0, args=(x_weighted,marginal_weight,t,tau,topo), method = 'L-BFGS-B' , jac = None, bounds=bound, options={'maxiter': miter,'disp': False}) 
     return res.x
 
-def update_nested_theta_j(theta0, x, Q, t, tau, topo, restrictions, bnd=1000, bnd_beta=100, miter=10000):
+def update_nested_theta_j(theta0, x, Q, t, tau, topo, restrictions, bnd=1000, bnd_beta=100, miter=1000):
     # define a new neglogL inside with fewer parameters
     redundant, blanket = restrictions # 1,0 => a[1] = a[0], -3, -4 => s_0 = u_0*beta/gamma, 0,-4 => a[0] = u_0
     if len(redundant) > len(theta0) - 4:
@@ -401,7 +330,7 @@ def update_nested_theta_j(theta0, x, Q, t, tau, topo, restrictions, bnd=1000, bn
             if -3 in redundant:
                 theta[-3] = theta[-4]*theta[-2]/theta[-1]
                 
-            return neglogL_a(theta, x_weighted, marginal_weight, t, tau, topo)
+            return neglogL_aL1(theta, x_weighted, marginal_weight, t, tau, topo)
             
        
         res = minimize(fun=custom_neglogL, x0=custom_theta0, args=(x_weighted,marginal_weight,t,tau,topo), method = 'L-BFGS-B' , jac = None, bounds=bound, options={'maxiter': miter,'disp': False}) 

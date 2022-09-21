@@ -23,19 +23,19 @@ if __name__ == "__main__":
     plot_p = min(10, p)
     fig, ax = plt.subplots(1,plot_p,figsize=(6*plot_p,4))
     for i in range(plot_p):
-        j = i + 10
+        j = i
         ax[i].scatter(X[:,j,0],X[:,j,1],c="gray");
         ax[i].scatter(Y[:,j,0],Y[:,j,1],c=t);
        
     ##### fit with correct theta0 #####
-    traj = Trajectory(topo, tau)
-    Q, lower_bound = traj.fit_warm_start(X, theta=theta+np.random.normal(0,0.1,size=theta.shape), epoch=1, parallel=True, n_threads=4)
-    plot_theta(theta,traj.theta)
-    plot_t(Q, l=0, t=t)
-    plot_t(Q, l=1, t=t)
+    #traj = Trajectory(topo, tau, model="basic_L1")
+    #Q, lower_bound = traj.fit(X, theta=theta+np.random.normal(0,0.1,size=theta.shape), epoch=1, parallel=True, n_threads=4)
+    #plot_theta(theta,traj.theta)
+    #plot_t(Q, l=0, t=t)
+    #plot_t(Q, l=1, t=t)
 
     ##### fit with correct Q0 #####
-    traj = Trajectory(topo, tau)
+    traj = Trajectory(topo, tau, model="basic_L1")
     L = len(topo)
     resol = 50
     m = n//resol
@@ -47,6 +47,8 @@ if __name__ == "__main__":
     Q, lower_bound = traj.fit_warm_start(X, Q=Q0, epoch=10, parallel=True, n_threads=4)
     plot_theta(theta,traj.theta)
     plot_t(Q, l=0, t=t)
+    plot_phase(X,traj.theta[:plot_p],Q,topo,tau)
+    """
     plot_t(Q, l=1, t=t)
     
     traj = Trajectory(topo, tau)
@@ -94,7 +96,7 @@ if __name__ == "__main__":
     
     
     
-    
+    """
     
     
     
