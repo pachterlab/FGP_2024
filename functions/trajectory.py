@@ -167,7 +167,7 @@ class Trajectory:
         return 
 
 
-    def update_weight(self,X,beta=1):
+    def update_weight(self,X):
         """
         calculate q with beta
 
@@ -205,17 +205,19 @@ class Trajectory:
         #logl = np.tensordot(X, np.log(eps + Y),axes=([-2,-1],[-2,-1]))
         #logl -= np.sum(Y,axis = (-2,-1))
         
-        logL = logl/beta
+        logL = logl
         #logL += np.log(self.prior_) where self.prior_ = 1/L/m
         #Q = softmax(logL, axis=(-2,-1))
         a = np.amax(logL,axis=(-2,-1))
         temp = np.exp(logL-a[:,None,None])
         temp_sum = temp.sum(axis=(-2,-1))
         Q = temp/temp_sum[:,None,None]
-        if beta == 1:
-            lower_bound = np.mean( np.log(temp_sum) + a )  - np.log(self.m) - np.log(self.L)
-        else:
-            lower_bound = np.mean(logsumexp(logl, axis=(-2,-1))) - np.log(self.m) - np.log(self.L)
+        lower_bound = np.mean( np.log(temp_sum) + a ) - np.log(self.m) - np.log(self.L)
+        
+        #if beta == 1:
+        #    lower_bound = np.mean( np.log(temp_sum) + a ) - np.log(self.m) - np.log(self.L)
+        #else:
+        #    lower_bound = np.mean(logsumexp(logl, axis=(-2,-1))) - np.log(self.m) - np.log(self.L)
         return Q, lower_bound
     
     def _fit(self, X, theta, epoch, tol, parallel, n_threads):

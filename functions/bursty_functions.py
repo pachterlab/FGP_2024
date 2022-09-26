@@ -4,6 +4,7 @@
 from math import log, exp
 import numpy as np
 from numpy.fft import irfftn
+import scipy
 
 def get_P(theta, t_array, tau, mx):
     ## theta = a_1,..., b, u0, s0, beta, gamma
@@ -63,7 +64,7 @@ def get_P(theta, t_array, tau, mx):
       phi[i-1,:] = integral
 
     gf = np.exp(phi)               # get generating function
-    gf = gf.reshape((len(tvec),half[0],half[1])) 
+    gf = gf.reshape((len(t_array),half[0],half[1])) 
     P = irfftn(gf, s=mx)
     return P
 
