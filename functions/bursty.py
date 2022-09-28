@@ -17,7 +17,7 @@ from scipy.optimize import minimize
 
 
 # global parameters: upper and lower limits for numerical stability
-eps = 1e-40
+eps = 1e-100
 
 def guess_theta(X,n_states):
     p = X.shape[1]
@@ -98,31 +98,50 @@ def get_logP(theta, t_array, tau, mx):
     U = c0*np.exp(-beta*t_array) + c1*np.exp(-gamma*t_array)    
 
     for i in range(2,len(t_array)+1):       
-      #q = b_array[-i:]*U[:i,:]
       integrand = k_array[-i:]*b*U[:i,:]/(1-b*U[:i,:])
+      #integrand = k_array[-i:]*b*U[:i,:] #Poisson
       integral = np.trapz(y=integrand, x=t_array[:i], axis=0)     # integrate ODE solution                   
       phi[i-1,:] += integral
       
     gf = np.exp(phi)               # get generating function
     gf = gf.reshape((len(t_array),half[0],half[1])) 
     P = irfftn(gf, s=mx)
-    P[P<eps]=eps
-    offset = 1e10 / np.max(P,axis=(1,2),keepdims=True)
-    logP = np.log(P*offset) - np.log(offset)
-    return logP
+    P[P<eps]= eps
+    return np.log(P)
 
 
 def neglogL(theta, x, mx, weight, t, tau, topo):
-    # theta: length K+4
-    # x: n*2
-    # Q: n*L*m
-    # t: len m
-    # tau: len K+1
+    """
+    
+
+    Parameters
+    ----------
+    theta : 1d array of length n_states+3
+        theta = a_1,..., b, beta, gamma.
+    x : 2d array of shape (n,2)
+        DESCRIPTION.
+    mx : list of length 2
+        x range.
+    weight : 3d array of shape (n,L,m)
+        DESCRIPTION.
+    t : array of shape (m,)
+        DESCRIPTION.
+    tau : list of length K+1
+        DESCRIPTION.
+    topo : 2d array of shape (L,K)
+        DESCRIPTION.
+
+    Returns
+    -------
+    scalar
+        negative likelihood of this gene summed over all samples.
+
+    """
     logL = 0
     for l in range(len(topo)):
         theta_l = np.concatenate((theta[topo[l]], theta[-3:]))
         logP = get_logP(theta_l,t,tau,mx) # m*mx1*mx2
-        logL += np.sum( weight[l] * logP[:,x[:,0],x[:,1]].T ) # logP[:,x]:(m,n)
+        logL += np.sum( weight[l].T * logP[:,x[:,0],x[:,1]] ) # logP[:,x]:(m,n)
     return - logL
 
 
@@ -203,37 +222,36 @@ def update_theta_j(theta0, x, Q, t, tau, topo, bnd=1000, bnd_beta=100, miter=100
     n,L,m = Q.shape
     mx = [x[:,0].max().astype(int)+10,x[:,1].max().astype(int)+10]
     res = minimize(fun=neglogL, x0=theta0, args=(x,mx,Q,t,tau,topo), method = 'L-BFGS-B' , jac = None, bounds=bound, options={'maxiter': miter,'disp': True}) 
-    return res.x
+    return res
 
 if __name__ == "__main__":  
     from simulation import Gillespie_bursty_2D
     import time 
     from scipy import stats
     import matplotlib.pyplot as plt
-    
-    """
-    tau = [0,0.5,1]
-    kvec = [10.0, 5.0]
-    bvec = [10.0, 10.0]
-    beta, gamma = 10.0, 5.0
-    nCells = 10000
+
+    nCells = 1000
+    topo=np.array([[0]])
     tvec = np.linspace(0,1,101)
-    
+    tau = [0,1]
+    kvec = [10.0]
+    bvec = [5.0]
+    beta, gamma = 5.0, 10.0
+    theta = kvec + bvec + [beta, gamma]
     X = Gillespie_bursty_2D(nCells, tvec, np.array([0,0],dtype=int), kvec, tau, beta, gamma, bvec)
-        
+ 
     mx = [X[:,:,0].max().astype(int)+10,X[:,:,1].max().astype(int)+10]
-    theta = kvec+[10,beta,gamma]
     
     t1 = time.time()
-    P,logP = get_logP(theta, tvec, tau, mx)
+    logP = get_logP(theta, tvec, tau, mx)
     pmf = np.exp(logP)
     t2 = time.time()
     print(t2-t1)
-            
-            
+                       
     bins = np.arange(mx[0])-0.5
     x = np.arange(mx[0])
-    time_points=np.array(np.array([0.01,0.1,0.2,0.3,0.5,0.7,0.99])*len(tvec),dtype=int)
+    time_points=np.array(np.array([0.01,0.1,0.2,0.3,0.5,0.7,0.99])*len(tvec),
+                         dtype=int)
     fig, ax = plt.subplots(1,len(time_points),figsize=(6*len(time_points),4))
     for i,j in enumerate(time_points):
         y = pmf[j].sum(axis=1)
@@ -247,36 +265,27 @@ if __name__ == "__main__":
     
     bins = np.arange(mx[1])-0.5
     x = np.arange(mx[1])
-    
     fig, ax = plt.subplots(1,len(time_points),figsize=(6*len(time_points),4))
     for i,j in enumerate(time_points):
         ax[i].hist(X[:,j,1],bins=bins,density=True,facecolor='lightgray')
         y = pmf[j].sum(axis=0)
         ax[i].plot(x,y,'r.',label='extracted pmf')
-    
     plt.legend();
     #plt.xlim([-1,100]);
-    
-    """
-    nCells = 1000
-    topo=np.array([[0]])
-    tvec = np.linspace(0,1,101)
-    tau = [0,1]
-    kvec = [10.0]
-    bvec = [1.0]
-    beta, gamma = 1.0, 2.0
-    theta = kvec + bvec + [beta, gamma]
-    X = Gillespie_bursty_2D(nCells, tvec, np.array([0,0],dtype=int), kvec, tau, beta, gamma, bvec)
-    
+        
     u = X[:,:,0].T.flatten().astype(int)
     s = X[:,:,1].T.flatten().astype(int)
     x = np.zeros((len(u),2), dtype=int)
     x[:,0] = u
     x[:,1] = s 
+    plt.plot(x[:,0],'.')
+    plt.plot(x[:,1],'.')
+    
     
     n = len(u)
     L = len(topo)
-    resol = 1000
+    K = len(tau)-1
+    resol = 1000 
     m = n//resol
     t = np.linspace(0,1,m)
     Q0 = np.zeros((L*n,L,m))
@@ -284,30 +293,28 @@ if __name__ == "__main__":
         for i in range(n):
             Q0[i+n*l,l,i//resol] = 1
 
-    K = len(tau)-1
-    theta0 = np.ones(K+3)*np.mean(x[:,0])
-    theta0[-3]=1
-    theta0[-2]=1
-    theta0[-1]=np.mean(x[:,0])/(np.mean(x[:,1])+eps)
-    theta0 += np.random.uniform(0,1,size = theta0.shape)
-    
-    res = update_theta_j(theta0, x, Q0, t, tau, topo=np.array([[0]]))
-    print(res)    
-    plt.plot(x[:,0],'.')
-    plt.plot(x[:,1],'.')
-    
     import two_species as two
-    K = len(tau)-1
     theta0 = np.ones(K+4)*np.mean(x[:,0])
     theta0[-3]=np.mean(x[:,1])
     theta0[-2]=1
     theta0[-1]=np.mean(x[:,0])/(np.mean(x[:,1])+eps)
     theta0 += np.random.uniform(0,1,size = theta0.shape)
-    res = two.update_theta_j(theta0, x, Q0, tvec, tau, topo=np.array([[0]]),miter=100000)
+    res = two.update_theta_j(theta0, x, Q0, tvec, tau, topo=np.array([[0]]),miter=1000)
     print(res)    
+    
+    
+    theta0 = np.ones(K+3)*np.mean(x[:,0])
+    theta0[-3]=1
+    theta0[-2]=1
+    theta0[-1]=2
+    theta0 += np.random.uniform(0,1,size = theta0.shape)
+    
+    res = update_theta_j(theta0, x, Q0, t, tau, topo=np.array([[0]]))
+    print(res)    
+
+    
     plt.scatter(x[:,0],x[:,1],c=np.arange(n))
-    
-    
+
     
     
     
