@@ -30,7 +30,7 @@ class Trajectory:
     tau:     
     """
 
-    def __init__(self, topo, tau, model="basic"):
+    def __init__(self, topo, tau, model="two_species"):
         self.topo=topo
         self.tau=tau
         self.L=len(topo)
@@ -256,8 +256,8 @@ class Trajectory:
         self.theta = theta.copy()
         for i in tqdm(range(epoch)):
             prev_lower_bound = lower_bound
-            beta = 1 #epoch - i
-            Q, lower_bound = self.update_weight(X, beta)
+
+            Q, lower_bound = self.update_weight(X)
             self.update_theta(X,Q,parallel=parallel,n_threads=n_threads)
             
             ## check converged

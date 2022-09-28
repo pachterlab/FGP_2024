@@ -1,4 +1,4 @@
-from basic import get_Y
+from two_species import get_Y
 import numpy as np
 import matplotlib.pyplot as plt
 
