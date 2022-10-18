@@ -9,7 +9,7 @@ Created on Tue Aug 30 15:06:23 2022
 from math import log
 import numpy as np
 import anndata as ad 
-from .models.two_species import get_Y
+from models.two_species import get_Y
 
 def simulate_data(topo, tau, n, p, loga_max=4, logb_max=2, random_seed=42, loomfilepath=None):
     np.random.seed(random_seed)
