@@ -113,7 +113,7 @@ class Trajectory:
         return
     
     
-    def update_nested_theta(self,X,Q,model_restrictions,parallel=False,n_threads=1,bnd=1000,bnd_beta=100,miter=1000):
+    def update_nested_theta(self,X,Q,model_restrictions,parallel=False,n_threads=1,bnd=1000,bnd_beta=1000,miter=1000):
         """
         Update theta for each gene with restriction defined in model_restrictions using update_nested_theta_j function
         
