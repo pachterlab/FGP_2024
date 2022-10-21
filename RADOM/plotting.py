@@ -109,32 +109,45 @@ def plot_theta_diff(theta_hat,K,gene_list=None):
 
           
 def plot_y(X,weight,traj,idx,gene_name=None,cell_colors=None):
+    n,p,c=X.shape
     theta_hat = traj.theta.copy()
     tau=traj.tau
     n,L,m=np.shape(weight)
-    p=np.shape(traj.theta)[0]
-    h=np.linspace(0,tau[-1],m)
+    h=np.linspace(tau[0],tau[-1],m)
     t_hat=np.sum(weight[:,:,:]*h[None,None,:],axis=(1,2))
     if gene_name is None:
         gene_name = np.arange(p)
     if cell_colors is None:
         cell_colors = t_hat
-    fig, ax = plt.subplots(2,len(idx),figsize=(6*len(idx),4*2))
+        
+    fig, ax = plt.subplots(c,len(idx),figsize=(6*len(idx),4*c))
+    
+    ## plot X and set title
     if len(idx)==1:
-        i=idx[0]
-        ax[0].scatter(t_hat,X[:,i,0],c=cell_colors);
-        ax[0].set_title(gene_name[0]+" unspliced")
-
-        ax[1].scatter(t_hat,X[:,i,1],c=cell_colors);
-        ax[1].set_title(gene_name[0]+" spliced")
+        if c==1:
+            i=idx[0]
+            ax.scatter(t_hat,X[:,i,0],c=cell_colors);
+            ax.set_title(gene_name[0])
+        else:
+            i=idx[0]
+            ax[0].scatter(t_hat,X[:,i,0],c=cell_colors);
+            ax[0].set_title(gene_name[0]+" unspliced")
+            for ic in range(1,c):
+                ax[ic].scatter(t_hat,X[:,i,1],c=cell_colors);
+                ax[ic].set_title(gene_name[0]+" spliced")
 
     else:
         for i,j in enumerate(idx):
-            ax[0,i].scatter(t_hat,X[:,j,0],c=cell_colors);
-            ax[0,i].set_title(gene_name[j])
-            ax[1,i].scatter(t_hat,X[:,j,1],c=cell_colors);
-            ax[1,i].set_title(gene_name[j])
+            if c==1:
+                ax[i].scatter(t_hat,X[:,j,0],c=cell_colors);
+                ax[i].set_title(gene_name[j])
+            else:
+                ax[0,i].scatter(t_hat,X[:,i,0],c=cell_colors);
+                ax[0,i].set_title(gene_name[j])
+                for ic in range(1,c):
+                    ax[ic,i].scatter(t_hat,X[:,j,ic],c=cell_colors);
     
+    ## plot Y
     Y_hat = np.zeros((L,n,p,2))
     for l in range(L):
         t_hat=np.sum(weight[:,l,:]*h[None,:],axis=1)
@@ -143,14 +156,19 @@ def plot_y(X,weight,traj,idx,gene_name=None,cell_colors=None):
         y_hat = Y_hat[l]
         if len(idx)==1:
             i=idx[0]
-            ax.scatter(y_hat[:,i,0],y_hat[:,i,1],c=t_hat,cmap=cmps[l]);
+            if c==1:
+                ax.scatter(t_hat,y_hat[:,i,0],c=t_hat,cmap=cmps[l])
+            else:
+                for ic in range(c):
+                    ax[ic].scatter(t_hat,y_hat[:,i,ic],c=t_hat,cmap=cmps[l]);
         else:
             for i,j in enumerate(idx):
-                ax[0,i].plot(t_hat,y_hat[:,j,0],'.');
-                ax[0,i].set_title(gene_list[j]+" unspliced")
+                if c==1:
+                    ax[i].plot(t_hat,y_hat[:,j,0],'k.');
 
-                ax[1,i].plot(t_hat,y_hat[:,j,1],'.');
-                ax[1,i].set_title(gene_list[j]+" spliced")
+                else:
+                    for ic in range(c):
+                        ax[ic,i].plot(t_hat,y_hat[:,j,ic],'k.');
                           
             
 def plot_phase(X,weight,traj,idx,gene_name=None,cell_colors=None):
