@@ -64,7 +64,7 @@ class Trajectory:
         Q=Q/Q.sum(axis=(-2,-1),keepdims=True)
         return Q
 
-    def update_theta(self,X,Q,gene_idx=None,parallel=False,n_threads=1,bnd=1000,bnd_beta=100,miter=10000):
+    def update_theta(self,X,Q,gene_idx=None,parallel=False,n_threads=1,bnd=1000,bnd_beta=1000,miter=10000):
         """
         Update theta for each gene in gene_idx using update_theta_j function
 
