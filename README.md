@@ -10,5 +10,9 @@
     * `one_species.py`: 
     * `bursty.py`: 
   * `inference.py`: Define the Trajectory class
-  * 
+
 * `notebooks/`: 
+  * `demo.ipynb`:
+  * `simulation.ipynb`:
+  * `forebrain.ipynb`:
+  * `Barile.ipynb`:this is the same dataset as the scvel.datasets.gastrulation_erythroid
