@@ -1,18 +1,24 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from trajectory import Trajectory
-from utils import simulate_data
+from inference import Trajectory
+from simulation import simulate_data
 from plotting import plot_phase, plot_t, plot_theta
 
 if __name__ == "__main__":  
     
-    topo = np.array([[0]])
+    topo = np.array([[0],[1],[2],[3]])
     tau=(0,1)
     n = 2000
     p = 20
     theta, t, Y, X = simulate_data(topo, tau, n, p)
+      
     
+    traj = Trajectory(topo, tau)
+    Q, lower_bounds = traj.fit_multi_init(X, 10, n_init=1, epoch=10, parallel=True, n_threads=4)
+    
+    
+    """
     #for j in range(2):
     #    theta[j,0:K] = theta[j,-4]
     #    theta[j,-3]=theta[j,-4]*theta[j,-2]/theta[j,-1]
@@ -35,7 +41,7 @@ if __name__ == "__main__":
     #plot_t(Q, l=1, t=t)
 
     ##### fit with correct Q0 #####
-    traj = Trajectory(topo, tau, model="one_species")
+    traj = Trajectory(topo, tau, model="two_species")
     L = len(topo)
     resol = 50
     m = n//resol
@@ -50,11 +56,11 @@ if __name__ == "__main__":
     #plot_theta(theta,traj.theta)
     plot_t(Q, l=0, t=t)
     #plot_phase(X,traj.theta[:plot_p],Q,topo,tau)
-    """
+
     plot_t(Q, l=1, t=t)
     
     traj = Trajectory(topo, tau)
-    Q, lower_bounds, thetas = traj.fit_multi_init(X, 10, n_init=6, epoch=10, parallel=True, n_threads=4)
+    Q, lower_bounds, thetas = traj.fit_multi_init(X, 10, n_init=1, epoch=10, parallel=True, n_threads=4)
     
     plot_phase(X,traj.theta[:plot_p],Q,topo,tau)
     plt.plot(lower_bounds)
@@ -94,11 +100,11 @@ if __name__ == "__main__":
     new_test_AIC = -2 * traj_nested.compute_lower_bound(test_X)
     new_AIC - old_AIC
 
-
-    
-    
-    
     """
+    
+    
+    
+
     
     
     

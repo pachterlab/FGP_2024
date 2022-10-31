@@ -6,7 +6,7 @@ Created on Sun Aug 21 11:26:08 2022
 @author: fang
 
 This file defines functions (guess_theta, update_theta_j, update_theta_j, get_logL) for two species Poisson model with different capture rate of unspliced and spliced mRNA.
-theta for each gene contains transcription rate of each states, u_0, s_0, r, beta, gamma.
+theta for each gene contains transcription rate of each states, u_0, s_0, beta, gamma, r.
 
 """
 
@@ -24,8 +24,8 @@ def guess_theta(X,n_states):
     theta[:,0:-4]=np.mean(X[:,:,0],axis=0)[:,None]
     theta[:,-4]=np.mean(X[:,:,1],axis=0)
     theta[:,-3]=1
-    theta[:,-2]=1
-    theta[:,-1] = np.mean(X[:,:,0],axis=0)/(np.mean(X[:,:,1],axis=0)+eps)
+    theta[:,-2]=np.mean(X[:,:,0],axis=0)/(np.mean(X[:,:,1],axis=0)+eps)
+    theta[:,-1]=1 
     return theta
 
 
@@ -39,9 +39,10 @@ def get_y(theta, t, tau):
     a = theta[0:K]
     y1_0 = theta[-5]
     y2_0 = theta[-4]
-    r = theta[-3]
-    beta = theta[-2]
-    gamma = theta[-1]
+    beta = theta[-3]
+    gamma = theta[-2]
+    r = theta[-1]
+
     
     c = beta/(beta-gamma+eps)
     d = beta**2/((beta-gamma)*gamma+eps)
@@ -82,9 +83,10 @@ def get_y_jac(theta, t, tau):
     a = theta[0:K]
     y1_0 = theta[-5]
     y2_0 = theta[-4]
-    r = theta[-3]
-    beta = theta[-2]
-    gamma = theta[-1]
+    beta = theta[-3]
+    gamma = theta[-2]
+    r = theta[-1]
+    
 
     c = beta/(beta-gamma+eps) 
     dc_dbeta = - gamma/((beta-gamma)**2+eps)
@@ -107,9 +109,9 @@ def get_y_jac(theta, t, tau):
     dY_dtheta[:,1,-4] = np.exp(-t*gamma)
     dY_dtheta[:,1,-5] = c * (dY_dtheta[:,1,-4] - dY_dtheta[:,0,-5])
     
-    dY_dtheta[:,0,-2] = - t * y1_0 * np.exp(-t*beta)
-    dY_dtheta[:,1,-2] = dc_dbeta * y1_0 * np.exp(-t*gamma)
-    dY_dtheta[:,1,-1] = dc_dgamma * y1_0 * np.exp(-t*gamma)  - t * y_0 * np.exp(-t*gamma)
+    dY_dtheta[:,0,-3] = - t * y1_0 * np.exp(-t*beta)
+    dY_dtheta[:,1,-3] = dc_dbeta * y1_0 * np.exp(-t*gamma)
+    dY_dtheta[:,1,-2] = dc_dgamma * y1_0 * np.exp(-t*gamma)  - t * y_0 * np.exp(-t*gamma)
     
     for k in range(1,K+1):
         I[k] = np.squeeze(t > tau[k])
@@ -127,17 +129,20 @@ def get_y_jac(theta, t, tau):
         dy1_a_k_coef_dbeta = - (t-tau[k]) * I[k] * np.exp(- (I[k] * (t-tau[k])) * beta) + (t-tau[k-1]) * I[k] * np.exp(-(I[k] * (t-tau[k-1])) * beta ) +  idx * (t-tau[k-1]) * np.exp(- (idx * (t-tau[k-1])) * beta)
         dy_a_k_coef_dgamma = - (t-tau[k]) * I[k] * np.exp(- (I[k] * (t-tau[k])) * gamma) + (t-tau[k-1]) * I[k] * np.exp(-(I[k] * (t-tau[k-1])) * gamma ) + idx * (t-tau[k-1]) * np.exp(- (idx * (t-tau[k-1])) * gamma) 
         
-        dY_dtheta[:,0,-2] += a[k-1] * dy1_a_k_coef_dbeta
-        dY_dtheta[:,1,-2] += da__dbeta[k-1] * y_a_k_coef
-        dY_dtheta[:,1,-1] += da__dgamma[k-1] * y_a_k_coef + a_[k-1] * dy_a_k_coef_dgamma
+        dY_dtheta[:,0,-3] += a[k-1] * dy1_a_k_coef_dbeta
+        dY_dtheta[:,1,-3] += da__dbeta[k-1] * y_a_k_coef
+        dY_dtheta[:,1,-2] += da__dgamma[k-1] * y_a_k_coef + a_[k-1] * dy_a_k_coef_dgamma
         
     Y = np.zeros((m,2))
     Y[:,0] = y1*r
     Y[:,1] = y-c*y1
     
     dY_dtheta[:,1,0:K] -= c * dY_dtheta[:,0,0:K]
-    dY_dtheta[:,1,-2] -=  c * dY_dtheta[:,0,-2] + dc_dbeta * y1
-    dY_dtheta[:,1,-1] -= dc_dgamma * y1
+    dY_dtheta[:,1,-3] -=  c * dY_dtheta[:,0,-2] + dc_dbeta * y1
+    dY_dtheta[:,1,-2] -= dc_dgamma * y1
+    
+    dY_dtheta[:,0,:-1] *= r
+    dY_dtheta[:,0,-1] = y1
     
     Y[Y<0]=0
     if np.sum(np.isnan(Y)) != 0:
@@ -160,11 +165,11 @@ def get_Y(theta, t, tau):
         print(np.shape(theta)[1], K+4)
         raise TypeError("wrong parameters lengths")
     a = theta[:,0:K].T
-    beta = theta[:,-2].reshape((1,-1))
-    gamma = theta[:,-1].reshape((1,-1))
-    r = theta[:,-3].reshape((1,-1))
     y1_0 = theta[:,-5].reshape((1,-1))
     y2_0 = theta[:,-4].reshape((1,-1))
+    beta = theta[:,-3].reshape((1,-1))
+    gamma = theta[:,-2].reshape((1,-1))
+    r = theta[:,-1].reshape((1,-1))
 
     c = beta/(beta-gamma+eps)
     d = beta**2/((beta-gamma)*gamma+eps)
@@ -212,7 +217,7 @@ def neglogL(theta, x_weighted, marginal_weight, t, tau, topo):
     # tau: len K+1
     logL = 0
     for l in range(len(topo)):
-        theta_l = np.concatenate((theta[topo[l]], theta[-4:]))
+        theta_l = np.concatenate((theta[topo[l]], theta[-5:]))
         Y = get_y(theta_l,t,tau) # m*2
         logL += np.sum( x_weighted[l] * np.log(eps + Y) - marginal_weight[l]*Y )
     return - logL

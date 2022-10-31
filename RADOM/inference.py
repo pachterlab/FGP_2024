@@ -35,6 +35,7 @@ class Trajectory:
         self.tau=tau
         self.L=len(topo)
         self.n_states=len(set(topo.flatten()))
+        self.K=len(tau)-1
         self.model_restrictions={}
         
         ## import model specific methods from the provided file
@@ -382,17 +383,17 @@ class Trajectory:
             ## to explore the parameter spaces systematically
             
             configs = []
+            theta0_mean = np.mean(theta0[:,:(self.n_states+1)],axis=0)
             for ip, perm in enumerate(itertools.permutations(range(self.n_states+1))):
                 ## Check whether this configuration is equivalent to previous ones
                 ## by sum over all lineages the product of (1 + theta) of all states in the lineages 
                 ## If so, continue.
                 ## If not, add to configs and fit.
-                theta = theta0.copy()
-                theta[:,:(self.n_states+1)] = theta0[:,np.array(perm)]
-                log_theta = np.log(1+theta)
+                theta_mean = theta0_mean[np.array(perm)]
                 config = 0
                 for l in range(self.L):
-                    config += np.exp(np.sum(np.arange(2,len(self.topo[l])+2)*log_theta[0,self.topo[l]]))*(1+theta[0,self.n_states])
+                    config += np.exp( np.sum(np.log(np.arange(1,self.K+1)+theta_mean[self.topo[l]]))) * theta_mean[self.n_states]
+                config = np.around(config)
                 
                 if config in configs:
                     continue
@@ -401,10 +402,14 @@ class Trajectory:
                     
                 ## record the original configuration and pass
                 if ip==0:
+                    print(config)
                     continue
                 
                 ## For new configuration
-                Q, lower_bound = self._fit(X, theta, epoch, tol, parallel, n_threads)
+                print(config)
+                theta = theta0.copy()
+                theta[:,:(self.n_states+1)] = theta0[:,np.array(perm)]
+                #Q, lower_bound = self._fit(X, theta, epoch, tol, parallel, n_threads)
 
                 if lower_bound > max_lower_bound or max_lower_bound == -np.inf:
                     max_lower_bound = lower_bound
