@@ -138,7 +138,7 @@ def get_y_jac(theta, t, tau):
     Y[:,1] = y-c*y1
     
     dY_dtheta[:,1,0:K] -= c * dY_dtheta[:,0,0:K]
-    dY_dtheta[:,1,-3] -=  c * dY_dtheta[:,0,-2] + dc_dbeta * y1
+    dY_dtheta[:,1,-3] -=  c * dY_dtheta[:,0,-3] + dc_dbeta * y1
     dY_dtheta[:,1,-2] -= dc_dgamma * y1
     
     dY_dtheta[:,0,:-1] *= r

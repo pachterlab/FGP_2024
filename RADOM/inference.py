@@ -402,14 +402,12 @@ class Trajectory:
                     
                 ## record the original configuration and pass
                 if ip==0:
-                    print(config)
                     continue
                 
                 ## For new configuration
-                print(config)
                 theta = theta0.copy()
                 theta[:,:(self.n_states+1)] = theta0[:,np.array(perm)]
-                #Q, lower_bound = self._fit(X, theta, epoch, tol, parallel, n_threads)
+                Q, lower_bound = self._fit(X, theta, epoch, tol, parallel, n_threads)
 
                 if lower_bound > max_lower_bound or max_lower_bound == -np.inf:
                     max_lower_bound = lower_bound

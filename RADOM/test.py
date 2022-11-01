@@ -7,18 +7,18 @@ from plotting import plot_phase, plot_t, plot_theta
 
 if __name__ == "__main__":  
     
-    topo = np.array([[0],[1],[2],[3]])
+    topo = np.array([[0]])
     tau=(0,1)
-    n = 2000
-    p = 20
+    n = 10000
+    p = 50
     theta, t, Y, X = simulate_data(topo, tau, n, p)
       
-    
-    traj = Trajectory(topo, tau)
-    Q, lower_bounds = traj.fit_multi_init(X, 10, n_init=1, epoch=10, parallel=True, n_threads=4)
-    
-    
     """
+    traj = Trajectory(topo, tau, model="two_species")
+    Q, lower_bounds = traj.fit_multi_init(X, 100, n_init=1, epoch=10, parallel=True, n_threads=4)
+    plot_theta(theta,traj.theta)
+    
+    
     #for j in range(2):
     #    theta[j,0:K] = theta[j,-4]
     #    theta[j,-3]=theta[j,-4]*theta[j,-2]/theta[j,-1]
@@ -39,24 +39,28 @@ if __name__ == "__main__":
     #plot_theta(theta,traj.theta)
     #plot_t(Q, l=0, t=t)
     #plot_t(Q, l=1, t=t)
-
+    """
     ##### fit with correct Q0 #####
-    traj = Trajectory(topo, tau, model="two_species")
+    traj = Trajectory(topo, tau, model="two_species_relative")
     L = len(topo)
-    resol = 50
+    resol = 100
     m = n//resol
     Q0 = np.zeros((L*n,L,m))
     for l in range(L):
         for i in range(n):
             Q0[i+n*l,l,i//resol] = 1
     
-    Q, lower_bound = traj.fit_warm_start(X[:,:,0,None], Q=Q0, epoch=10, parallel=True, n_threads=4)
-    print(theta)
-    print(traj.theta)
-    #plot_theta(theta,traj.theta)
-    plot_t(Q, l=0, t=t)
+    Q, lower_bound = traj.fit_warm_start(X, Q=Q0, epoch=10, parallel=True, n_threads=4)
+    
+    plot_theta(theta,traj.theta[:,:-1])
+    
+    plt.plot(traj.theta[:,-1],'.')
+    plt.axhline(y=1,color='r')
+    plt.yscale('log')
+    
+    #plot_t(Q, l=0, t=t)
     #plot_phase(X,traj.theta[:plot_p],Q,topo,tau)
-
+    """
     plot_t(Q, l=1, t=t)
     
     traj = Trajectory(topo, tau)

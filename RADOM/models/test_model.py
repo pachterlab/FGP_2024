@@ -1,11 +1,13 @@
 
-
 #%%
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from scipy.optimize import check_grad, approx_fprime
-    from one_species import *
+    import numpy as np
+    import two_species
+    import two_species_relative
     
+
     """
     np.random.seed(42)
     topo = np.array([[0,]])
@@ -27,18 +29,18 @@ if __name__ == "__main__":
     theta_d[0,1:K] -= theta_a[0,0:(K-1)]
     theta_d[0,-3] = theta_d[0,-3]*theta_d[0,-1]/theta_d[0,-2] - theta_d[0,-4]  # eta = zeta * s_0 - u_0
     
-    Y_a = get_y_a(theta_a[0], t, tau)
-    Y_d = get_y_delta(theta_d[0], t, tau)
+    #Y_a = get_y_a(theta_a[0], t, tau)
+    #Y_d = get_y_delta(theta_d[0], t, tau)
 
 
     print(np.max(Y_a-Y_d))
     #print(np.max(Y-y))
-
+    """
 #%% check jac function
     np.random.seed(42)
-    topo = np.array([[0,]])
+    topo = np.array([[0]])
     tau=(0,1)
-    n = 3
+    n = 1000
     p = 1
     K=len(tau)-1
     t=np.linspace(0, 1, n)
@@ -46,14 +48,14 @@ if __name__ == "__main__":
     loga_max=4
     logb_max=2
     
-    theta_a=np.ones((p,K+4))
-    theta_a[0,:K+2]=np.exp(np.random.uniform(0,loga_max,size=K+2))-1
-    theta_a[0,-2:]=np.exp(np.random.uniform(-logb_max,logb_max,size=2))
+    theta=np.ones((p,K+5))
+    theta[0,:K+2]=np.exp(np.random.uniform(0,loga_max,size=K+2))-1
+    theta[0,-3:]=np.exp(np.random.uniform(-logb_max,logb_max,size=3))
     
-    Y_a = get_y_a(theta_a[0], t, tau)
+    Y = two_species_relative.get_y(theta[0], t, tau)
 
-    Y = Y_a
     X = np.random.poisson(Y)
+    X = np.random.poisson(X)
     x = X
     Q = np.diag(np.ones(n))/n
     Q = Q[:,None,:]
@@ -66,17 +68,37 @@ if __name__ == "__main__":
         marginal_weight[l] =  weight_l.sum(axis=0)[:,None] # m*1
         
     
-    theta0_a = np.zeros(K+4)
-    theta0_a[0:-3]=np.mean(X[:,0])
-    theta0_a[-3]=np.mean(X[:,1])
-    theta0_a[-2]=1
-    theta0_a[-1]=np.mean(X[:,0])/np.mean(X[:,1])
-    theta0_a += np.random.uniform(0,1,size = theta0_a.shape)
+    theta0 = np.ones(K+5)
+    theta0[0:-4]=np.mean(X[:,0])
+    theta0[-4]=np.mean(X[:,1])
+    theta0[-3]=1
+    theta0[-2]=np.mean(X[:,0])/np.mean(X[:,1])
     
-    #check_grad(neglogL_a, neglogL_a_jac, theta0_a, x_weighted, marginal_weight, t, tau, topo)
-    #approx_fprime(theta_a[0], neglogL_a, 1e-100, x_weighted, marginal_weight, t, tau, topo)
-    #neglogL_a_jac(theta_a[0], x_weighted, marginal_weight, t, tau, topo)
-#%% jac function debug
+    #check_grad(two_species.neglogL, two_species.neglogL_jac, theta[0,:-1], x_weighted, marginal_weight, t, tau, topo)
+    check_grad(two_species_relative.neglogL, two_species_relative.neglogL_jac, theta[0], x_weighted, marginal_weight, t, tau, topo)
+    #approx_fprime(theta0[:-1], two_species.neglogL, 1e-100, x_weighted, marginal_weight, t, tau, topo)
+    #two_species.neglogL_jac(theta0[:-1], x_weighted, marginal_weight, t, tau, topo)
+    
+    res = two_species_relative.update_theta_j(theta0, X, Q, t, tau, topo, miter = 10000)
+    res2 = two_species.update_theta_j(theta0[:-1], X, Q, t, tau, topo, miter = 100000)
+
+        
+    Y_fit = two_species_relative.get_y(res, t, tau)
+    plt.figure()
+    plt.scatter(X[:,0],X[:,1],c='gray');
+    plt.scatter(Y[:,0],Y[:,1],c="red");
+    plt.scatter(Y_fit[:,0],Y_fit[:,1],c=t,cmap='Spectral');
+    plt.title("two_species_relative")
+
+    Y_fit_a = two_species.get_y(res2, t, tau)
+    plt.figure()
+    plt.scatter(X[:,0],X[:,1],c='gray');
+    plt.scatter(Y[:,0],Y[:,1],c="red");
+    plt.scatter(Y_fit_a[:,0],Y_fit_a[:,1],c=t,cmap='Spectral');
+    plt.title("two_species")
+   
+    """
+    #%% jac function debug
     def get_y_a_debug(theta, t, tau):
         # theta: a_1, ..., a_K, u_0, s_0, beta, gamma
         # t: len m
@@ -128,8 +150,8 @@ if __name__ == "__main__":
     print(jac[:,1])
     
     #Y, dY_dtheta = get_y_a_jac(theta_a[0],t,tau)
-    """
-#%% update_theta_j
+    
+    #%% update_theta_j
     np.random.seed(42)
     topo = np.array([[0,]])
     tau=(0,1)
@@ -171,27 +193,8 @@ if __name__ == "__main__":
     
     res_d = update_theta_j_delta(theta0_d, X, Q, t, tau, topo)
     print(theta_d[0]-res_d)
-    """
-    Y_fit_delta = get_y_delta(res_d.x, t, tau)
     
-    plt.scatter(X[:,0],X[:,1],c='gray');
-    plt.scatter(Y_fit_delta[:,0],Y_fit_delta[:,1],c=t,cmap='Spectral');
-    plt.scatter(Y[:,0],Y[:,1],c="red");
-    """
-    res_a = update_theta_j(theta0_a, X, Q, t, tau, topo)   
-    res_a_nojac = update_theta_j_a_nojac(theta0_a, X, Q, t, tau, topo)   
-    print(theta_a[0]-res_a)
-    print(theta_a[0]-res_a_nojac)
-    
-
-    
-    Y_fit_a = get_y_a(res_a.x, t, tau)
-
-    plt.scatter(X[:,0],X[:,1],c='gray');
-    plt.scatter(Y_fit_a[:,0],Y_fit_a[:,1],c=t,cmap='Spectral');
-    plt.scatter(Y[:,0],Y[:,1],c="red");
-
-#%% check update_nested_theta_j_a(theta0, x, Q, t, tau, topo, restrictions)
+    #%% check update_nested_theta_j_a(theta0, x, Q, t, tau, topo, restrictions)
     theta_a=np.zeros((p,K+4))
     theta_a[0,-4]=np.exp(np.random.uniform(0,loga_max,size=1))
     theta_a[0,0:K]=theta_a[0,-4]
@@ -219,3 +222,4 @@ if __name__ == "__main__":
     plt.scatter(X[:,0],X[:,1],c=t);
     plt.scatter(Y_fit[:,0],Y_fit[:,1],c=t,cmap='Spectral');
     plt.scatter(Y[:,0],Y[:,1],c="red");
+    """
