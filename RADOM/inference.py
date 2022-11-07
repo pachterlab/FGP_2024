@@ -223,7 +223,7 @@ class Trajectory:
         #    lower_bound = np.mean(logsumexp(logl, axis=(-2,-1))) - np.log(self.m) - np.log(self.L)
         return Q, lower_bound
     
-    def _fit(self, X, theta, epoch, tol, parallel, n_threads):
+    def _fit(self, X, theta, epoch, tol, parallel, n_threads, silence=True):
         """
         The method fits the model by iterating between E-step and M-step for at most `epoch` iterations.
         The warm start means that either a reasonable Q or theta is provided.
@@ -257,7 +257,7 @@ class Trajectory:
         lower_bound = -np.inf
         self.converged = False
         self.theta = theta.copy()
-        for i in tqdm(range(epoch)):
+        for i in tqdm(range(epoch), disable=silence):
             prev_lower_bound = lower_bound
             Q, lower_bound = self.update_weight(X)
             self.update_theta(X,Q,parallel=parallel,n_threads=n_threads)
@@ -363,7 +363,7 @@ class Trajectory:
         
         np.random.seed(seed)
         for init in range(n_init):
-            print("trial "+str(init+1))
+            #print("trial "+str(init+1))
             self._initialize_theta(X)
             Q = self._initialize_Q(n)  
             self.update_theta(X,Q,parallel=parallel,n_threads=n_threads)
