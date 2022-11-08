@@ -30,13 +30,15 @@ class Trajectory:
     tau:     
     """
 
-    def __init__(self, topo, tau, model="two_species"):
+    def __init__(self, topo, tau, model="two_species",verbose=0):
         self.topo=topo
         self.tau=tau
         self.L=len(topo)
         self.n_states=len(set(topo.flatten()))
         self.K=len(tau)-1
         self.model_restrictions={}
+        self.model=model
+        self.verbose = verbose
         
         ## import model specific methods from the provided file
         tempmod = import_module("models."+model)
@@ -65,7 +67,7 @@ class Trajectory:
         Q=Q/Q.sum(axis=(-2,-1),keepdims=True)
         return Q
 
-    def update_theta(self,X,Q,gene_idx=None,parallel=False,n_threads=1,bnd=1000,bnd_beta=1000,miter=10000):
+    def update_theta(self,X,Q,gene_idx=None,parallel=False,n_threads=1,bnd=1000,bnd_beta=1000,miter=1000000):
         """
         Update theta for each gene in gene_idx using update_theta_j function
 
@@ -108,8 +110,9 @@ class Trajectory:
         else:
             new_theta = np.zeros((len(gene_idx),n_theta))
             for i,j in enumerate(gene_idx): 
-                new_theta[i]=self.update_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, bnd, bnd_beta,miter)
-                
+                new_theta[i]=self.update_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, bnd, bnd_beta, miter)
+            #print(success)
+            #print(new_theta)
         self.theta[gene_idx] = new_theta
         return
     
@@ -223,7 +226,7 @@ class Trajectory:
         #    lower_bound = np.mean(logsumexp(logl, axis=(-2,-1))) - np.log(self.m) - np.log(self.L)
         return Q, lower_bound
     
-    def _fit(self, X, theta, epoch, tol, parallel, n_threads, silence=True):
+    def _fit(self, X, theta, epoch, tol, parallel, n_threads):
         """
         The method fits the model by iterating between E-step and M-step for at most `epoch` iterations.
         The warm start means that either a reasonable Q or theta is provided.
@@ -257,6 +260,8 @@ class Trajectory:
         lower_bound = -np.inf
         self.converged = False
         self.theta = theta.copy()
+        
+        silence = not bool(self.verbose)
         for i in tqdm(range(epoch), disable=silence):
             prev_lower_bound = lower_bound
             Q, lower_bound = self.update_weight(X)
