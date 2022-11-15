@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-cmps = ['Purples', 'Blues', 'Greens', 'Oranges', 'Reds']
 colors = ['purple', 'blue', 'green', 'orange', 'r']
 colors20 = np.vstack((plt.cm.tab20b(np.linspace(0., 1, 20))[::2], plt.cm.tab20c(np.linspace(0, 1, 20))[1::2]))    
 
@@ -172,12 +171,12 @@ def plot_y(X,weight,traj,idx,gene_name=None,cell_colors=None):
                         ax[ic,i].scatter(t_hat,y_hat[:,j,ic],c=colors[l]);
  
 
-def plot_phase(X,weight,traj,idx,gene_name=None,cell_colors=None):
+def plot_phase(X,weight,traj,idx=np.arange(10),gene_name=None,cell_colors=None):
     theta_hat = traj.theta.copy()
     tau=traj.tau
     n,L,m=np.shape(weight)
     p=np.shape(traj.theta)[0]
-    h=np.linspace(tau[0],tau[-1],m)
+    h=traj.t
     t_hat=np.sum(weight[:,:,:]*h[None,None,:],axis=(1,2))
     if gene_name is None:
         gene_name = np.arange(p)
@@ -192,12 +191,12 @@ def plot_phase(X,weight,traj,idx,gene_name=None,cell_colors=None):
         if len(idx)==1:
             i=idx[0]
             ax.scatter(X[:,i,0]+np.random.normal(0,0.1,n),X[:,i,1]+np.random.normal(0,0.1,n),c=cell_colors,s=0.5,cmap='Greys');
-            ax.scatter(y_hat[:,i,0],y_hat[:,i,1],c=t_hat,cmap=cmps[l]);
+            ax.scatter(y_hat[:,i,0],y_hat[:,i,1],c=t_hat);
             ax.set_title(gene_name[i])
         else:
             for i,j in enumerate(idx):
                 ax[i].scatter(X[:,j,0]+np.random.normal(0,0.1,n),X[:,j,1]+np.random.normal(0,0.1,n),c=cell_colors,s=0.5,cmap='Greys');
-                ax[i].scatter(y_hat[:,j,0],y_hat[:,j,1],c=t_hat,cmap=cmps[l]);
+                ax[i].scatter(y_hat[:,j,0],y_hat[:,j,1],c=t_hat);
                 ax[i].set_title(gene_name[j])
         
                          

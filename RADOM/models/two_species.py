@@ -318,7 +318,45 @@ def get_logL(X,theta,t,tau,topo):
     #logL -= logX
     return logL
 
-def update_theta_j(theta0, x, Q, t, tau, topo, bnd=10000, bnd_beta=1000, miter=1000):
+
+def update_theta_j(theta0, x, Q, t, tau, topo, restrictions=None, bnd=10000, bnd_beta=1000, miter=1000):
+    """
+    with jac
+
+    Parameters
+    ----------
+    theta0 : TYPE
+        DESCRIPTION.
+    x : TYPE
+        DESCRIPTION.
+    Q : TYPE
+        DESCRIPTION.
+    t : TYPE
+        DESCRIPTION.
+    tau : TYPE
+        DESCRIPTION.
+    topo : TYPE
+        DESCRIPTION.
+    bnd : TYPE, optional
+        DESCRIPTION. The default is 1000.
+    bnd_beta : TYPE, optional
+        DESCRIPTION. The default is 100.
+    miter : TYPE, optional
+        DESCRIPTION. The default is 1000.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    """
+    if restrictions==None:
+        res = update_theta_j_unrestricted(theta0, x, Q, t, tau, topo, bnd, bnd_beta, miter)
+    else:
+        res = update_theta_j_restricted(theta0, x, Q, t, tau, topo, restrictions, bnd, bnd_beta, miter)
+    return res
+
+def update_theta_j_unrestricted(theta0, x, Q, t, tau, topo, bnd=10000, bnd_beta=1000, miter=1000):
     """
     with jac
 
@@ -363,7 +401,7 @@ def update_theta_j(theta0, x, Q, t, tau, topo, bnd=10000, bnd_beta=1000, miter=1
     res = minimize(fun=neglogL, x0=theta0, args=(x_weighted,marginal_weight,t,tau,topo), method = 'L-BFGS-B' , jac = neglogL_jac, bounds=bound, options={'maxiter': miter,'disp': False}) 
     return res.x
 
-def update_nested_theta_j(theta0, x, Q, t, tau, topo, restrictions, bnd=10000, bnd_beta=1000, miter=1000):
+def update_theta_j_restricted(theta0, x, Q, t, tau, topo, restrictions, bnd=10000, bnd_beta=1000, miter=1000):
     # define a new neglogL inside with fewer parameters
     redundant, blanket = restrictions # 1,0 => a[1] = a[0], -3, -4 => s_0 = u_0*beta/gamma, 0,-4 => a[0] = u_0
     if len(redundant) > len(theta0) - 4:
@@ -398,6 +436,8 @@ def update_nested_theta_j(theta0, x, Q, t, tau, topo, restrictions, bnd=10000, b
             
        
         res = minimize(fun=custom_neglogL, x0=custom_theta0, args=(x_weighted,marginal_weight,t,tau,topo), method = 'L-BFGS-B' , jac = None, bounds=bound, options={'maxiter': miter,'disp': False}) 
+        
+        
         theta = np.zeros(len(theta0))
         theta[~redundant_mask] = res.x
         theta[redundant] = theta[blanket]

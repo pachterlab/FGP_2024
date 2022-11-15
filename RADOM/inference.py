@@ -30,13 +30,13 @@ class Trajectory:
     tau:     
     """
 
-    def __init__(self, topo, tau, model="two_species",verbose=0):
+    def __init__(self, topo, tau, model="two_species",restrictions={},verbose=0):
         self.topo=topo
         self.tau=tau
         self.L=len(topo)
         self.n_states=len(set(topo.flatten()))
         self.K=len(tau)-1
-        self.model_restrictions={}
+        self.model_restrictions=restrictions
         self.model=model
         self.verbose = verbose
         
@@ -67,7 +67,7 @@ class Trajectory:
         Q=Q/Q.sum(axis=(-2,-1),keepdims=True)
         return Q
 
-    def update_theta(self,X,Q,gene_idx=None,parallel=False,n_threads=1,bnd=1000,bnd_beta=1000,miter=1000000):
+    def update_theta(self,X,Q,gene_idx=None,parallel=False,n_threads=1):
         """
         Update theta for each gene in gene_idx using update_theta_j function
 
@@ -99,79 +99,28 @@ class Trajectory:
             
         if gene_idx is None:
             gene_idx = np.arange(p)
-            
+        restricted_gene_idx = np.array(list(self.model_restrictions.keys()))
+        
         if parallel is True:
             Input_args = []
             for j in gene_idx:
-                Input_args.append((self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, bnd, bnd_beta, miter))
+                if gene_idx in restricted_gene_idx:
+                    Input_args.append((self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, self.model_restrictions[j]))
+                else:
+                    Input_args.append((self.theta[j], X[:,j], Q, self.t, self.tau, self.topo))
             with Pool(n_threads) as pool:      
                 new_theta = pool.starmap(self.update_theta_j, Input_args)
             new_theta = np.array(new_theta)
         else:
             new_theta = np.zeros((len(gene_idx),n_theta))
             for i,j in enumerate(gene_idx): 
-                new_theta[i]=self.update_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, bnd, bnd_beta, miter)
-            #print(success)
-            #print(new_theta)
+                if gene_idx in restricted_gene_idx:
+                    new_theta[i]=self.update_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, self.model_restrictions[j])
+                else:
+                    new_theta[i]=self.update_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo)
+                    
         self.theta[gene_idx] = new_theta
         return
-    
-    
-    def update_nested_theta(self,X,Q,model_restrictions,parallel=False,n_threads=1,bnd=1000,bnd_beta=1000,miter=1000):
-        """
-        Update theta for each gene with restriction defined in model_restrictions using update_nested_theta_j function
-        
-        Parameters
-        ----------
-        X : TYPE
-            DESCRIPTION.
-        Q : TYPE
-            DESCRIPTION.
-        nested_model : TYPE
-            DESCRIPTION.
-        parallel : TYPE, optional
-            DESCRIPTION. The default is False.
-        n_threads : TYPE, optional
-            DESCRIPTION. The default is 1.
-        theta0 : TYPE, optional
-            DESCRIPTION. The default is None.
-        bnd : TYPE, optional
-            DESCRIPTION. The default is 1000.
-        bnd_beta : TYPE, optional
-            DESCRIPTION. The default is 100.
-        miter : TYPE, optional
-            DESCRIPTION. The default is 1000.
-
-        Raises
-        ------
-        TypeError
-            DESCRIPTION.
-
-        Returns
-        -------
-        None.
-
-        """
-        
-        p, n_theta = self.theta.shape
-
-        gene_idx = np.array(list(model_restrictions.keys()))
-        if parallel is True:
-            Input_args = []           
-            for j in gene_idx:
-                Input_args.append((self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, model_restrictions[j], bnd, bnd_beta, miter))                
-            with Pool(n_threads) as pool:      
-                new_theta = pool.starmap(self.update_nested_theta_j, Input_args)
-            new_theta = np.array(new_theta)
-            
-        else:
-            new_theta = np.zeros((len(gene_idx),n_theta))
-            for i,j in enumerate(gene_idx):
-                new_theta[i]=self.update_nested_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, model_restrictions[j], bnd, bnd_beta, miter)
-                
-        self.theta[gene_idx] = new_theta
-        return 
-
 
     def update_weight(self,X):
         """
@@ -273,6 +222,10 @@ class Trajectory:
                 self.converged = True
                 break
                 
+        self.X = X
+        self.Q = Q
+        self.lower_bound = lower_bound
+        
         return [Q, lower_bound]
     
     def fit_warm_start(self, X, Q=None, theta=None, epoch=10, tol=1e-4, parallel=False, n_threads=1):
@@ -368,7 +321,8 @@ class Trajectory:
         
         np.random.seed(seed)
         for init in range(n_init):
-            #print("trial "+str(init+1))
+            if bool(self.verbose):
+                print("trial "+str(init+1))
             self._initialize_theta(X)
             Q = self._initialize_Q(n)  
             self.update_theta(X,Q,parallel=parallel,n_threads=n_threads)
@@ -431,60 +385,6 @@ class Trajectory:
         self.thetas = thetas
         return [best_Q, elbos]
     
-    def fit_restrictions(self, X, Q, theta, model_restrictions, epoch=1, tol=1e-6, parallel=False, n_threads=1):
-        """
-
-        Parameters
-        ----------
-        X : TYPE
-            DESCRIPTION.
-        Q : TYPE
-            DESCRIPTION.
-        theta : TYPE
-            DESCRIPTION.
-        epoch : TYPE, optional
-            DESCRIPTION. The default is 10.
-        tol : TYPE, optional
-            DESCRIPTION. The default is 1e-4.
-        parallel : TYPE, optional
-            DESCRIPTION. The default is False.
-        n_threads : TYPE, optional
-            DESCRIPTION. The default is 1.
-
-        Returns
-        -------
-        list
-            DESCRIPTION.
-
-        """
-                         
-        n, p, _ = np.shape(X)
-        gene_mask = np.ones(p,dtype=bool)
-        gene_idx = np.arange(p)
-        self.model_restrictions = model_restrictions
-        gene_mask[np.array(list(self.model_restrictions.keys()))] = False
-         
-        self.converged = False
-        lower_bound = -np.inf
-        self.theta = theta.copy()
-        m = Q.shape[-1]
-        self._set_m(m)
-        for i in range(epoch):
-            prev_lower_bound = lower_bound
-            Q, lower_bound = self.update_weight(X)
-            self.update_theta(X,Q,gene_idx[gene_mask],parallel=parallel,n_threads=n_threads)      
-            self.update_nested_theta(X,Q,self.model_restrictions,parallel=parallel,n_threads=n_threads)
-            
-           ## check converged
-            change = lower_bound - prev_lower_bound
-            if abs(change) < tol:
-                self.converged = True
-                break
-                
-        return [Q, lower_bound]                 
-    
-
-    
     def fit(self, X, Q=None, theta=None, model_restrictions=None, m=100, n_init=3, epoch=20, tol=1e-4, parallel=False, n_threads=1, seed=42):
         """
         
@@ -524,10 +424,6 @@ class Trajectory:
         else:
             print("run method fit_multi_init")
             res = self.fit_multi_init(X, m=m, n_init=n_init, epoch=epoch, tol=tol, parallel=parallel, n_threads=n_threads, seed=seed)
-        
-        if model_restrictions is not None:
-            print("run method fit_restrictions")     
-            res = self.fit_restrictions(X, res[0], self.theta, model_restrictions)
         
         return res
     
