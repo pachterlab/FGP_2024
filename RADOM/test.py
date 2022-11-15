@@ -5,27 +5,13 @@ from inference import Trajectory
 from simulation import simulate_data
 from plotting import plot_phase, plot_t, plot_theta
 
-if __name__ == "__main__":  
-    
-    topo = np.array([[0]])
+if __name__ == '__main__':
+    #%%    
+    topo = np.array([[0],[1]])
     tau=(0,1)
     n = 10000
-    p = 10000
+    p = 10
     theta, t, Y, X = simulate_data(topo, tau, n, p)
-    
-    
-    traj = Trajectory(topo, tau, model="two_species")
-    #Q, lower_bounds = traj.fit_multi_init(X, 100, n_init=1, epoch=10, parallel=True, n_threads=4)
-    #plot_theta(theta,traj.theta)
-    
-   
-    
-    #for j in range(2):
-    #    theta[j,0:K] = theta[j,-4]
-    #    theta[j,-3]=theta[j,-4]*theta[j,-2]/theta[j,-1]
-    
-    
-    #test_X = np.random.poisson(Y)
     
     plot_p = min(10, p)
     fig, ax = plt.subplots(1,plot_p,figsize=(6*plot_p,4))
@@ -34,15 +20,41 @@ if __name__ == "__main__":
         ax[i].scatter(X[:,j,0],X[:,j,1],c="gray");
         ax[i].scatter(Y[:,j,0],Y[:,j,1],c=t);
        
+        
+    traj = Trajectory(topo, tau, model="two_species", restrictions={1:[[1],[0]]}, verbose=1)
+    Q, lower_bounds = traj.fit_multi_init(X, 100, n_init=2, epoch=10, parallel=True, n_threads=4)
+    plot_theta(theta,traj.theta)
+    plot_t(Q, l=0, t=t)
+    plot_t(Q, l=1, t=t)
+    plot_phase(X, Q, traj)
+    plt.plot(lower_bounds)
+    print(traj.compute_AIC(X))
+    #for j in range(2):
+    #    theta[j,0:K] = theta[j,-4]
+    #    theta[j,-3]=theta[j,-4]*theta[j,-2]/theta[j,-1]
+    traj_ = Trajectory(topo, tau, model="two_species", restrictions={}, verbose=1)
+    Q_, lower_bounds_ = traj_.fit_multi_init(X, 100, n_init=2, epoch=10, parallel=True, n_threads=4)
+    plot_theta(theta,traj_.theta)
+    print(traj_.compute_AIC(X))
+    plot_phase(X, Q_, traj_)
+    
+    test_X = np.random.poisson(Y)
+    -2*len(X)*traj.compute_lower_bound(test_X)
+    -2*len(X)*traj_.compute_lower_bound(test_X)
+
+
+    accept, delta, new = traj_.compare_model(X, new_model={1:[[1],[0]],5:[[1],[0]]})
+    print(accept, delta)
     ##### fit with correct theta0 #####
     #traj = Trajectory(topo, tau, model="basic_L1")
     #Q, lower_bound = traj.fit(X, theta=theta+np.random.normal(0,0.1,size=theta.shape), epoch=1, parallel=True, n_threads=4)
     #plot_theta(theta,traj.theta)
     #plot_t(Q, l=0, t=t)
     #plot_t(Q, l=1, t=t)
-
+    
     ##### fit with correct Q0 #####
-    #traj = Trajectory(topo, tau, model="two_species_relative")
+    """
+    traj = Trajectory(topo, tau, model="two_species_relative")
     L = len(topo)
     resol = 100
     m = n//resol
@@ -52,10 +64,18 @@ if __name__ == "__main__":
             Q0[i+n*l,l,i//resol] = 1
     
     Q, lower_bound = traj.fit_warm_start(X, Q=Q0, epoch=1)#, parallel=True, n_threads=4)
+    """
     
+    ##### fit #####
+    """
+    traj = Trajectory(topo, tau, verbose=1)
+    Q, lower_bound = traj.fit(X, m=100, epoch=10, parallel=True, n_threads=4)
     plot_theta(theta,traj.theta)
     plot_t(Q,t=t)
+    """
     
+    
+    """
     error = np.abs(theta-traj.theta)/theta**(1/4)
     plt.plot(theta[:,0],error[:,0],'.',alpha=0.1)
     plt.yscale("log")
@@ -77,7 +97,7 @@ if __name__ == "__main__":
     
     #plot_t(Q, l=0, t=t)
     #plot_phase(X,traj.theta[:plot_p],Q,topo,tau)
-    """
+    
     plot_t(Q, l=1, t=t)
     
     traj = Trajectory(topo, tau)
@@ -91,10 +111,8 @@ if __name__ == "__main__":
     
     Q, lower_bound = traj.fit_warm_start(X, Q=Q, theta=traj.theta, epoch=10, parallel=True, n_threads=4)
     
-
     
     
-
     accepts = []
     diffs = []
     for j in range(p):
@@ -102,12 +120,13 @@ if __name__ == "__main__":
         accept, diff = traj.compare_model(X, nested_model)
         accepts.append(accept)
         diffs.append(diff)
-
-    # no jac 2862.8
     
+    # no jac 2862.8
+    """
     
     #%% test AIC
-
+    
+    """
     old_AIC = traj.compute_AIC(X)
     test_AIC = -2* traj.compute_lower_bound(test_X)
     
@@ -120,12 +139,12 @@ if __name__ == "__main__":
     new_AIC = traj_nested.compute_AIC(X)
     new_test_AIC = -2 * traj_nested.compute_lower_bound(test_X)
     new_AIC - old_AIC
-
+    
     """
     
     
     
-
+    
     
     
     

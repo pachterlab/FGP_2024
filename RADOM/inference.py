@@ -11,12 +11,13 @@ from tqdm import tqdm
 from multiprocessing import Pool
 from scipy.special import logsumexp
 from importlib import import_module
+import copy
 
     
 eps = 1e-10
 
-def get_AIC(L,n,k):
-    return -2*(L-k/n)
+def get_AIC(logL,n,k):
+    return 2*k-2*n*logL
 
 
 class Trajectory:
@@ -47,7 +48,6 @@ class Trajectory:
         self.guess_theta = tempmod.guess_theta
         self.get_logL =  tempmod.get_logL
         self.update_theta_j = tempmod.update_theta_j
-        self.update_nested_theta_j = tempmod.update_nested_theta_j 
         del tempmod 
         return None
     
@@ -104,7 +104,7 @@ class Trajectory:
         if parallel is True:
             Input_args = []
             for j in gene_idx:
-                if gene_idx in restricted_gene_idx:
+                if j in restricted_gene_idx:
                     Input_args.append((self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, self.model_restrictions[j]))
                 else:
                     Input_args.append((self.theta[j], X[:,j], Q, self.t, self.tau, self.topo))
@@ -114,7 +114,7 @@ class Trajectory:
         else:
             new_theta = np.zeros((len(gene_idx),n_theta))
             for i,j in enumerate(gene_idx): 
-                if gene_idx in restricted_gene_idx:
+                if j in restricted_gene_idx:
                     new_theta[i]=self.update_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, self.model_restrictions[j])
                 else:
                     new_theta[i]=self.update_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo)
@@ -149,36 +149,23 @@ class Trajectory:
             
         #n,p,s=np.shape(X)
         
-        logl = self.get_logL(X,self.theta,self.t,self.tau,self.topo) # with size (n,self.L,self.m)
-        
-        #Y = np.zeros((self.L,self.m,p,2))
-        #for l in range(self.L):
-            #theta_l = np.concatenate((self.theta[:,self.topo[l]], self.theta[:,-4:]), axis=1)
-            #Y[l] = get_Y(theta_l,self.t,self.tau) # m*p*2
-            
-        #logL =  np.sum(X[:,None,None,:,:] * np.log(Y[None,:]+eps) - Y[None,:], axis=(-2,-1)) # n*L*m*p*2 -> n*L*m
-        #logl = np.tensordot(X, np.log(eps + Y),axes=([-2,-1],[-2,-1]))
-        #logl -= np.sum(Y,axis = (-2,-1))
-        
+        logl = self.get_logL(X,self.theta,self.t,self.tau,self.topo) # with size (n,self.L,self.m)     
         logL = logl
         #logL += np.log(self.prior_) where self.prior_ = 1/L/m
-        #Q = softmax(logL, axis=(-2,-1))
+        
+        ## Q = softmax(logL, axis=(-2,-1))
         a = np.amax(logL,axis=(-2,-1))
         temp = np.exp(logL-a[:,None,None])
         temp_sum = temp.sum(axis=(-2,-1))
         Q = temp/temp_sum[:,None,None]
         lower_bound = np.mean( np.log(temp_sum) + a ) - np.log(self.m) - np.log(self.L)
         
-        #if beta == 1:
-        #    lower_bound = np.mean( np.log(temp_sum) + a ) - np.log(self.m) - np.log(self.L)
-        #else:
-        #    lower_bound = np.mean(logsumexp(logl, axis=(-2,-1))) - np.log(self.m) - np.log(self.L)
         return Q, lower_bound
     
     def _fit(self, X, theta, epoch, tol, parallel, n_threads):
         """
         The method fits the model by iterating between E-step and M-step for at most `epoch` iterations.
-        The warm start means that either a reasonable Q or theta is provided.
+        The warm start means that either Q or theta is provided.
     
 
         Parameters
@@ -213,8 +200,10 @@ class Trajectory:
         silence = not bool(self.verbose)
         for i in tqdm(range(epoch), disable=silence):
             prev_lower_bound = lower_bound
-            Q, lower_bound = self.update_weight(X)
-            self.update_theta(X,Q,parallel=parallel,n_threads=n_threads)
+            
+            ## EM algorithm   
+            Q, lower_bound = self.update_weight(X) ### E step   
+            self.update_theta(X,Q,parallel=parallel,n_threads=n_threads) ### M step
             
             ## check converged
             change = lower_bound - prev_lower_bound
@@ -504,49 +493,27 @@ class Trajectory:
             raise NameError("self.theta not defined. Run fit first")
         
         n, p, s = X.shape
+        ori_AIC = self.compute_AIC(X)
         
-        ##### Store the old model and compute relative AIC #####
-        if not hasattr(self, 'ori_theta'):
-            self.ori_theta = self.theta.copy()
-            self.ori_AIC = self.compute_AIC(X)
-            self.ori_model = self.model_restrictions.copy()
-            
-            
         ##### update theta with restrictions #####
-        Q , _ = self.update_weight(X)
-            
-        self.update_nested_theta(X,Q,new_model,parallel=parallel,n_threads=n_threads)
-        
-        ##### check AIC with old theta + new nested theta #####
-        Q , logL = self.update_weight(X)
-        k = p * (self.n_states+4)
-        for j in list(new_model.keys()):
-            restrictions = new_model[j]
-            redundant, blanket = restrictions
-            k -= len(redundant)
-            if len(redundant) > self.n_states:
-                k -= 1
-                
-        self.new_AIC = get_AIC(logL,n,k)
+        new = copy.deepcopy(self)
+        new.model_restrictions=new_model
+        new._fit(X,new.theta,epoch=1,tol=tol,parallel=parallel,n_threads=n_threads)
+        new_AIC = new.compute_AIC(X)
         
         ##### if the nested model is better, return True #####
-        if self.new_AIC < self.ori_AIC:
+        if new_AIC < ori_AIC:
             accept = True  
         
         ##### else, update the whole theta and check agian #####
         else:      
             ##### update all theta with new weight #####
-            Q, logL = self.fit_restrictions(X, Q, self.theta, new_model, epoch, tol, parallel, n_threads)
-            self.new_AIC = get_AIC(logL,n,k)
+            new._fit(X,new.theta,epoch=epoch,tol=tol,parallel=parallel,n_threads=n_threads)
+            new_AIC = new.compute_AIC(X)
             
-            if self.new_AIC < self.ori_AIC:
+            if new_AIC < ori_AIC:
                 accept = True  
             else:
                 accept = False
-                
-        # return to original model
-        self.new_theta = self.theta.copy()
-        self.theta = self.ori_theta.copy() 
-        self.model_restrictions = self.ori_model.copy()
-        
-        return accept, self.new_AIC - self.ori_AIC
+
+        return accept, new_AIC - ori_AIC, new

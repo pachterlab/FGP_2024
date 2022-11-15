@@ -185,18 +185,18 @@ def plot_phase(X,weight,traj,idx=np.arange(10),gene_name=None,cell_colors=None):
       
     fig, ax = plt.subplots(1,len(idx),figsize=(6*len(idx),4))
     for l in range(L):
-        t_hat=np.linspace(traj.tau[0],traj.tau[-1],100*traj.m)
+        t=np.linspace(traj.tau[0],traj.tau[-1],100*traj.m)
         theta_l_hat = np.concatenate((theta_hat[:,traj.topo[l]], theta_hat[:,-4:]), axis=1)
-        y_hat = traj.get_Y(theta_l_hat,t_hat,tau) # m*p*2
+        y_hat = traj.get_Y(theta_l_hat,t,tau) # m*p*2
         if len(idx)==1:
             i=idx[0]
-            ax.scatter(X[:,i,0]+np.random.normal(0,0.1,n),X[:,i,1]+np.random.normal(0,0.1,n),c=cell_colors,s=0.5,cmap='Greys');
-            ax.scatter(y_hat[:,i,0],y_hat[:,i,1],c=t_hat);
+            ax.scatter(X[:,i,0]+np.random.normal(0,0.1,n),X[:,i,1]+np.random.normal(0,0.1,n),c=cell_colors,s=0.5,cmap='cividis');
+            ax.scatter(y_hat[:,i,0],y_hat[:,i,1],c=t);
             ax.set_title(gene_name[i])
         else:
             for i,j in enumerate(idx):
-                ax[i].scatter(X[:,j,0]+np.random.normal(0,0.1,n),X[:,j,1]+np.random.normal(0,0.1,n),c=cell_colors,s=0.5,cmap='Greys');
-                ax[i].scatter(y_hat[:,j,0],y_hat[:,j,1],c=t_hat);
+                ax[i].scatter(X[:,j,0]+np.random.normal(0,0.1,n),X[:,j,1]+np.random.normal(0,0.1,n),c=cell_colors,s=0.5,cmap='cividis');
+                ax[i].scatter(y_hat[:,j,0],y_hat[:,j,1],c=t);
                 ax[i].set_title(gene_name[j])
         
                          
