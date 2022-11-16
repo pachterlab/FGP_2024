@@ -108,7 +108,8 @@ def plot_theta_diff(theta_hat,K,gene_list=None):
     ax[5].set_title("gamma");
 
           
-def plot_y(X,weight,traj,idx,gene_name=None,cell_colors=None):
+def plot_y(traj,idx,gene_name=None,cell_colors=None):
+    X,weight = traj.X, traj.Q
     n,p,c=X.shape
     theta_hat = traj.theta.copy()
     tau=traj.tau
@@ -157,21 +158,21 @@ def plot_y(X,weight,traj,idx,gene_name=None,cell_colors=None):
         if len(idx)==1:
             i=idx[0]
             if c==1:
-                ax.scatter(t_hat,y_hat[:,i,0],c=colors[l])
+                ax.scatter(t_hat,y_hat[:,i,0],c='r')
             else:
                 for ic in range(c):
-                    ax[ic].scatter(t_hat,y_hat[:,i,ic],c=colors[l]);
+                    ax[ic].scatter(t_hat,y_hat[:,i,ic],c='r');
         else:
             for i,j in enumerate(idx):
                 if c==1:
-                    ax[i].plot(t_hat,y_hat[:,j,0],'k.');
+                    ax[i].scatter(t_hat,y_hat[:,j,0],c='r');
 
                 else:
                     for ic in range(c):
-                        ax[ic,i].scatter(t_hat,y_hat[:,j,ic],c=colors[l]);
- 
+                        ax[ic,i].scatter(t_hat,y_hat[:,j,ic],c='r');
 
-def plot_phase(X,weight,traj,idx=np.arange(10),gene_name=None,cell_colors=None):
+def plot_phase(traj,idx=np.arange(10),gene_name=None,cell_colors=None):
+    X,weight = traj.X, traj.Q
     theta_hat = traj.theta.copy()
     tau=traj.tau
     n,L,m=np.shape(weight)

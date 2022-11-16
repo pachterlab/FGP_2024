@@ -341,7 +341,7 @@ class Trajectory:
                 config = 0
                 for l in range(self.L):
                     config += np.exp( np.sum(np.log(np.arange(1,self.K+1)+theta_mean[self.topo[l]]))) * theta_mean[self.n_states]
-                config = np.around(config)
+                config = np.around(config,6)
                 
                 if config in configs:
                     continue
