@@ -20,8 +20,11 @@ if __name__ == '__main__':
         ax[i].scatter(X[:,j,0],X[:,j,1],c="gray");
         ax[i].scatter(Y[:,j,0],Y[:,j,1],c=t);
        
-        
-    traj = Trajectory(topo, tau, model="two_species", restrictions={1:[[1],[0]]}, verbose=1)
+      
+    traj = Trajectory(topo, tau, model="two_species", verbose=1)
+    traj.fit(X,theta=theta)
+    traj.theta = theta
+    """  
     Q, lower_bounds = traj.fit_multi_init(X, 100, n_init=2, epoch=10, parallel=True, n_threads=4)
     plot_theta(theta,traj.theta)
     plot_t(Q, l=0, t=t)
@@ -32,19 +35,30 @@ if __name__ == '__main__':
     #for j in range(2):
     #    theta[j,0:K] = theta[j,-4]
     #    theta[j,-3]=theta[j,-4]*theta[j,-2]/theta[j,-1]
+    """
     traj_ = Trajectory(topo, tau, model="two_species", restrictions={}, verbose=1)
     Q_, lower_bounds_ = traj_.fit_multi_init(X, 100, n_init=2, epoch=10, parallel=True, n_threads=4)
     plot_theta(theta,traj_.theta)
-    print(traj_.compute_AIC(X))
-    plot_phase(X, Q_, traj_)
+    print(-2*len(X)*traj_.compute_lower_bound(X))
+    print(-2*len(X)*traj.compute_lower_bound(X))
+    plot_phase(traj_)
     
-    test_X = np.random.poisson(Y)
-    -2*len(X)*traj.compute_lower_bound(test_X)
-    -2*len(X)*traj_.compute_lower_bound(test_X)
+    EAIC = []
+    for ii in range(100):
+        test_X = np.random.poisson(Y)
+    #-2*len(X)*traj.compute_lower_bound(test_X)
+        EAIC.append(-2*len(X)*traj.compute_lower_bound(test_X))
+    print(np.mean(EAIC))
+    
+    EAIC_ = []
+    for ii in range(100):
+        test_X = np.random.poisson(Y)
+    #-2*len(X)*traj.compute_lower_bound(test_X)
+        EAIC_.append(-2*len(X)*traj_.compute_lower_bound(test_X))
+    print(np.mean(EAIC_))
 
-
-    accept, delta, new = traj_.compare_model(X, new_model={1:[[1],[0]],5:[[1],[0]]})
-    print(accept, delta)
+    #accept, delta, new = traj_.compare_model(X, new_model={1:[[1],[0]],5:[[1],[0]]})
+    #print(accept, delta)
     ##### fit with correct theta0 #####
     #traj = Trajectory(topo, tau, model="basic_L1")
     #Q, lower_bound = traj.fit(X, theta=theta+np.random.normal(0,0.1,size=theta.shape), epoch=1, parallel=True, n_threads=4)

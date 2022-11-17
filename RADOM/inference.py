@@ -16,9 +16,6 @@ import copy
     
 eps = 1e-10
 
-def get_AIC(logL,n,k):
-    return 2*k-2*n*logL
-
 
 class Trajectory:
     """
@@ -469,8 +466,9 @@ class Trajectory:
                 self.k -= 1
 
         logL = self.compute_lower_bound(X)
-
-        return  get_AIC(logL,n,self.k)
+        AIC = 2*self.k-2*n*logL
+        AICc = AIC + 2*self.k*(self.k+1)/(X.size-self.k-1)
+        return  AICc
     
     
     def compare_model(self, X, new_model, epoch=1, tol=1e-4, parallel=False, n_threads=1):
