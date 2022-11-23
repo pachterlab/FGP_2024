@@ -405,10 +405,12 @@ class Trajectory:
         self._set_m(m)
         
         if Q is not None or theta is not None:
-            print("run method fit_warm_start")
+            if bool(self.verbose):
+                print("run method fit_warm_start")
             res = self.fit_warm_start(X, Q=Q, theta=theta, epoch=epoch, tol=tol, parallel=parallel, n_threads=n_threads)
         else:
-            print("run method fit_multi_init")
+            if bool(self.verbose):
+                print("run method fit_multi_init")
             res = self.fit_multi_init(X, m=m, n_init=n_init, epoch=epoch, tol=tol, parallel=parallel, n_threads=n_threads, seed=seed)
         
         return res

@@ -127,49 +127,49 @@ def plot_y(traj,idx,gene_name=None,cell_colors=None):
     if len(idx)==1:
         if c==1:
             i=idx[0]
-            ax.scatter(t_hat,X[:,i,0],c='gray')#c=cell_colors);
+            ax.scatter(t_hat,X[:,i,0]+np.random.normal(0,0.1,n),c='gray')#c=cell_colors);
             ax.set_title(gene_name[i])
         else:
             i=idx[0]
-            ax[0].scatter(t_hat,X[:,i,0],c='gray')#c=cell_colors);
+            ax[0].scatter(t_hat,X[:,i,0]+np.random.normal(0,0.1,n),c='gray')#c=cell_colors);
             ax[0].set_title(gene_name[i]+" unspliced")
             for ic in range(1,c):
-                ax[ic].scatter(t_hat,X[:,i,1],c='gray')#c=cell_colors);
+                ax[ic].scatter(t_hat,X[:,i,1]+np.random.normal(0,0.1,n),c='gray')#c=cell_colors);
                 ax[ic].set_title(gene_name[i]+" spliced")
 
     else:
         for i,j in enumerate(idx):
             if c==1:
-                ax[i].scatter(t_hat,X[:,j,0],c='gray')#c=cell_colors);
+                ax[i].scatter(t_hat,X[:,j,0]+np.random.normal(0,0.1,n),c='gray')#c=cell_colors);
                 ax[i].set_title(gene_name[j])
             else:
-                ax[0,i].scatter(t_hat,X[:,i,0],c='gray')#c=cell_colors);
+                ax[0,i].scatter(t_hat,X[:,i,0]+np.random.normal(0,0.1,n),c='gray')#c=cell_colors);
                 ax[0,i].set_title(gene_name[j])
                 for ic in range(1,c):
-                    ax[ic,i].scatter(t_hat,X[:,j,ic],c='gray')#c=cell_colors);
+                    ax[ic,i].scatter(t_hat,X[:,j,ic]+np.random.normal(0,0.1,n),c='gray')#c=cell_colors);
     
     ## plot Y
-    Y_hat = np.zeros((L,n,p,2))
+    Y_hat = np.zeros((L,10000,p,2))
     for l in range(L):
-        t_hat=np.sum(weight[:,l,:]*h[None,:],axis=1)
+        t=np.linspace(tau[0],tau[-1],10000)
         theta_l_hat = np.concatenate((theta_hat[:,traj.topo[l]], theta_hat[:,-4:]), axis=1)
-        Y_hat[l] = traj.get_Y(theta_l_hat,t_hat,tau) # m*p*2
+        Y_hat[l] = traj.get_Y(theta_l_hat,t,tau) # m*p*2
         y_hat = Y_hat[l]
         if len(idx)==1:
             i=idx[0]
             if c==1:
-                ax.scatter(t_hat,y_hat[:,i,0],c='r')
+                ax.scatter(t,y_hat[:,i,0],c='k')
             else:
                 for ic in range(c):
-                    ax[ic].scatter(t_hat,y_hat[:,i,ic],c='r');
+                    ax[ic].scatter(t,y_hat[:,i,ic],c='k');
         else:
             for i,j in enumerate(idx):
                 if c==1:
-                    ax[i].scatter(t_hat,y_hat[:,j,0],c='r');
+                    ax[i].scatter(t,y_hat[:,j,0],c='k');
 
                 else:
                     for ic in range(c):
-                        ax[ic,i].scatter(t_hat,y_hat[:,j,ic],c='r');
+                        ax[ic,i].scatter(t,y_hat[:,j,ic],c='k');
 
 def plot_phase(traj,idx=np.arange(10),gene_name=None,cell_colors=None):
     X,weight = traj.X, traj.Q
