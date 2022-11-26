@@ -187,7 +187,12 @@ def plot_phase(traj,idx=np.arange(10),gene_name=None,cell_colors=None):
     fig, ax = plt.subplots(1,len(idx),figsize=(6*len(idx),4))
     for l in range(L):
         t=np.linspace(traj.tau[0],traj.tau[-1],100*traj.m)
-        theta_l_hat = np.concatenate((theta_hat[:,traj.topo[l]], theta_hat[:,-4:]), axis=1)
+        if traj.model == "two_species":
+            theta_l_hat = np.concatenate((theta_hat[:,traj.topo[l]], theta_hat[:,-4:]), axis=1)
+        elif traj.model == "two_species_ss":
+            theta_l_hat = np.concatenate((theta_hat[:,traj.topo[l]], theta_hat[:,-3:]), axis=1)
+        else:
+            print("update plot_phase to include", traj.model)
         y_hat = traj.get_Y(theta_l_hat,t,tau) # m*p*2
         if len(idx)==1:
             i=idx[0]

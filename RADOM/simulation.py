@@ -9,27 +9,44 @@ Created on Tue Aug 30 15:06:23 2022
 from math import log
 import numpy as np
 import anndata as ad 
-from models.two_species import get_Y
+from importlib import import_module
+import models.two_species_ss as ss
+import models.two_species as ts
 
-def simulate_data(topo, tau, n, p, loga_max=4, logb_max=2, random_seed=42, loomfilepath=None):
+def simulate_data(topo, tau, n, p, model="two_species", loga_max=4, logb_max=2, random_seed=2022, loomfilepath=None):    
     np.random.seed(random_seed)
     L=len(topo)
     n_states=len(set(topo.flatten()))
     t=np.linspace(tau[0],tau[-1],n)
     true_t = []
     
-    theta=np.zeros((p,n_states+4))
-    for j in range(n_states+2):
-        theta[:,j]=np.exp(np.random.uniform(0,loga_max,size=p))-1
-    theta[:,-2]=np.exp(np.random.uniform(0,logb_max,size=p))
-    theta[:,-1]=np.exp(np.random.uniform(0,logb_max,size=p))
-    
-    Y = np.zeros((n*L,p,2))
-    for l in range(L):
-        theta_l = np.concatenate((theta[:,topo[l]], theta[:,-4:]), axis=1)
-        Y[l*n:(l+1)*n] = get_Y(theta_l,t,tau) # m*p*2
-        true_t = np.append(true_t,t)
+    if model == "two_species":
+        theta=np.zeros((p,n_states+4))
+        for j in range(n_states+2):
+            theta[:,j]=np.exp(np.random.uniform(0,loga_max,size=p))-1
+        theta[:,-2]=np.exp(np.random.uniform(0,logb_max,size=p))
+        theta[:,-1]=np.exp(np.random.uniform(0,logb_max,size=p))
+        
+        Y = np.zeros((n*L,p,2))
+        for l in range(L):
+            theta_l = np.concatenate((theta[:,topo[l]], theta[:,-4:]), axis=1)
+            Y[l*n:(l+1)*n] = ts.get_Y(theta_l,t,tau) # m*p*2
+            true_t = np.append(true_t,t)
+            
+    elif model == "two_species_ss":
+        theta=np.zeros((p,n_states+3))
+        for j in range(n_states+1):
+            theta[:,j]=np.exp(np.random.uniform(0,loga_max,size=p))-1
+        theta[:,-2]=np.exp(np.random.uniform(0,logb_max,size=p))
+        theta[:,-1]=np.exp(np.random.uniform(0,logb_max,size=p))
+        
+        Y = np.zeros((n*L,p,2))
+        for l in range(L):
+            theta_l = np.concatenate((theta[:,topo[l]], theta[:,-3:]), axis=1)
+            Y[l*n:(l+1)*n] = ss.get_Y(theta_l,t,tau) # m*p*2
+            true_t = np.append(true_t,t)
 
+    
     X = np.random.poisson(Y)
     
     if loomfilepath is not None:
@@ -46,6 +63,7 @@ def simulate_data(topo, tau, n, p, loga_max=4, logb_max=2, random_seed=42, loomf
     return theta, true_t, Y, X,
 
 # Simulations
+
 
 def gillvec_burst_inhom(k,tvec,tau,bvec,S,nCells,propfun,burstfun):
     n_species = S.shape[1]

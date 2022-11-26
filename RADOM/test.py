@@ -7,11 +7,11 @@ from plotting import plot_phase, plot_t, plot_theta
 
 if __name__ == '__main__':
     #%%    
-    topo = np.array([[0],[1]])
+    topo = np.array([[0]])
     tau=(0,1)
-    n = 10000
-    p = 10
-    theta, t, Y, X = simulate_data(topo, tau, n, p)
+    n = 2000
+    p = 100
+    theta, t, Y, X = simulate_data(topo, tau, n, p, model="two_species_ss",)
     
     plot_p = min(10, p)
     fig, ax = plt.subplots(1,plot_p,figsize=(6*plot_p,4))
@@ -19,12 +19,37 @@ if __name__ == '__main__':
         j = i
         ax[i].scatter(X[:,j,0],X[:,j,1],c="gray");
         ax[i].scatter(Y[:,j,0],Y[:,j,1],c=t);
+        ax[i].set_title(j)
        
-      
-    traj = Trajectory(topo, tau, model="two_species", verbose=1)
-    traj.fit(X,theta=theta)
-    traj.theta = theta
-    """  
+    ##### fit with correct Q0 #####
+    traj = Trajectory(topo, tau, model="two_species_ss")
+    L = len(topo)
+    resol = 100
+    m = n//resol
+    Q0 = np.zeros((L*n,L,m))
+    for l in range(L):
+        for i in range(n):
+            Q0[i+n*l,l,i//resol] = 1
+    
+    Q, lower_bound = traj.fit(X, Q=Q0, epoch=10)#, parallel=True, n_threads=4)
+    plot_theta(theta,traj.theta)
+    plot_t(Q, l=0, t=t)
+    plot_phase(traj)
+    
+    ##### fit #####
+    """
+    traj = Trajectory(topo, tau, verbose=1)
+    Q, lower_bound = traj.fit(X, m=100, epoch=10, parallel=True, n_threads=4)
+    plot_theta(theta,traj.theta)
+    plot_t(Q,t=t)
+    
+        
+    traj = Trajectory(topo, tau, model="two_species_ss", verbose=1)
+    Q, elbos = traj.fit(X,tol=1e-10)
+    plot_theta(theta,traj.theta)
+    
+    
+ 
     Q, lower_bounds = traj.fit_multi_init(X, 100, n_init=2, epoch=10, parallel=True, n_threads=4)
     plot_theta(theta,traj.theta)
     plot_t(Q, l=0, t=t)
@@ -35,7 +60,7 @@ if __name__ == '__main__':
     #for j in range(2):
     #    theta[j,0:K] = theta[j,-4]
     #    theta[j,-3]=theta[j,-4]*theta[j,-2]/theta[j,-1]
-    """
+    
     traj_ = Trajectory(topo, tau, model="two_species", restrictions={}, verbose=1)
     Q_, lower_bounds_ = traj_.fit_multi_init(X, 100, n_init=2, epoch=10, parallel=True, n_threads=4)
     plot_theta(theta,traj_.theta)
@@ -59,37 +84,8 @@ if __name__ == '__main__':
 
     #accept, delta, new = traj_.compare_model(X, new_model={1:[[1],[0]],5:[[1],[0]]})
     #print(accept, delta)
-    ##### fit with correct theta0 #####
-    #traj = Trajectory(topo, tau, model="basic_L1")
-    #Q, lower_bound = traj.fit(X, theta=theta+np.random.normal(0,0.1,size=theta.shape), epoch=1, parallel=True, n_threads=4)
-    #plot_theta(theta,traj.theta)
-    #plot_t(Q, l=0, t=t)
-    #plot_t(Q, l=1, t=t)
     
-    ##### fit with correct Q0 #####
-    """
-    traj = Trajectory(topo, tau, model="two_species_relative")
-    L = len(topo)
-    resol = 100
-    m = n//resol
-    Q0 = np.zeros((L*n,L,m))
-    for l in range(L):
-        for i in range(n):
-            Q0[i+n*l,l,i//resol] = 1
-    
-    Q, lower_bound = traj.fit_warm_start(X, Q=Q0, epoch=1)#, parallel=True, n_threads=4)
-    """
-    
-    ##### fit #####
-    """
-    traj = Trajectory(topo, tau, verbose=1)
-    Q, lower_bound = traj.fit(X, m=100, epoch=10, parallel=True, n_threads=4)
-    plot_theta(theta,traj.theta)
-    plot_t(Q,t=t)
-    """
-    
-    
-    """
+
     error = np.abs(theta-traj.theta)/theta**(1/4)
     plt.plot(theta[:,0],error[:,0],'.',alpha=0.1)
     plt.yscale("log")
