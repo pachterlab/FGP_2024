@@ -28,7 +28,7 @@ class Trajectory:
     tau:     
     """
 
-    def __init__(self, topo, tau, model="two_species_ss",restrictions={},verbose=0):
+    def __init__(self, topo, tau, model, restrictions={}, verbose=0):
         self.topo=topo
         self.tau=tau
         self.L=len(topo)
@@ -61,6 +61,8 @@ class Trajectory:
     
     def _initialize_Q(self, n):
         Q=1+np.random.uniform(0,1,size=(n,self.L,self.m))
+        if self.prior is not None:
+            Q *= self.prior
         Q=Q/Q.sum(axis=(-2,-1),keepdims=True)
         return Q
 
@@ -146,13 +148,13 @@ class Trajectory:
             
         #n,p,s=np.shape(X)
         
-        logl = self.get_logL(X,self.theta,self.t,self.tau,self.topo) # with size (n,self.L,self.m)     
-        logL = logl
+        logL = self.get_logL(X,self.theta,self.t,self.tau,self.topo) # with size (n,self.L,self.m)     
         if self.prior is not None:
-            logL += np.log(self.prior_)
+            logL += np.log(self.prior)
         else:
             logL += - np.log(self.m) - np.log(self.L)
         
+        ## Q is the posterior
         ## Q = softmax(logL, axis=(-2,-1))
         a = np.amax(logL,axis=(-2,-1))
         temp = np.exp(logL-a[:,None,None])
@@ -210,10 +212,6 @@ class Trajectory:
             if abs(change) < tol:
                 self.converged = True
                 break
-                
-        self.X = X
-        self.Q = Q
-        self.lower_bound = lower_bound
         
         return [Q, lower_bound]
     
@@ -269,7 +267,7 @@ class Trajectory:
         
         return self._fit(X, theta, epoch, tol, parallel, n_threads)
     
-    def fit_multi_init(self, X, m, n_init=3, epoch=10, tol=1e-4, parallel=False, n_threads=1, seed=42):
+    def fit_multi_init(self, X, n_init=3, epoch=10, tol=1e-4, parallel=False, n_threads=1, seed=42):
         """
         The method fits the model n_init times and sets the parameters with
         which the model has the largest likelihood or lower bound. Within each
@@ -279,8 +277,6 @@ class Trajectory:
         Parameters
         ----------
         X : ndarray, shape (n, p, 2)
-            DESCRIPTION.
-        m : int
             DESCRIPTION.
         n_init : int, optional
             DESCRIPTION. The default is 3.
@@ -303,7 +299,6 @@ class Trajectory:
         """
         n, p, _ = np.shape(X)
      
-        self._set_m(m)
         elbos = []
         thetas = []
         max_lower_bound = -np.inf
@@ -405,11 +400,16 @@ class Trajectory:
 
         """
         
-        self._set_m(m)
-        self.prior = prior
         
-        if prior is not None and Q is None:
-            Q=prior
+        self.prior = prior
+        self._set_m(m)
+        
+        if prior is not None:
+            if Q is None:
+                assert m == prior.shape[-1]  
+                
+            else:
+                assert Q.shape == prior.shape
         
         if Q is not None or theta is not None:
             if bool(self.verbose):
@@ -418,9 +418,13 @@ class Trajectory:
         else:
             if bool(self.verbose):
                 print("run method fit_multi_init")
-            res = self.fit_multi_init(X, m=m, n_init=n_init, epoch=epoch, tol=tol, parallel=parallel, n_threads=n_threads, seed=seed)
+            res = self.fit_multi_init(X, n_init=n_init, epoch=epoch, tol=tol, parallel=parallel, n_threads=n_threads, seed=seed)
         
-        return res
+        Q, elbos = res
+        self.X = X
+        self.Q = Q
+        self.elbos = elbos
+        return self
     
     def compute_lower_bound(self,X):
         """

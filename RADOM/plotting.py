@@ -20,7 +20,7 @@ def plot_t(weight,l=0,ax=None,t=None):
        
         ax.imshow(weight[:,l,:],aspect="auto");
         ax.text(right, top,"cor="+str(np.around(np.corrcoef(t_hat,t)[0,1],2)), horizontalalignment='right', 
-                 verticalalignment='top', transform=ax.transAxes, color="white");
+                 verticalalignment='top', transform=ax.transAxes, color="white",fontsize=36);
     else:
         ord=np.argsort(t_hat)
         ax.imshow(weight[ord,l,:],aspect="auto");
@@ -127,32 +127,37 @@ def plot_y(traj,idx,gene_name=None,cell_colors=None):
     if len(idx)==1:
         if c==1:
             i=idx[0]
-            ax.scatter(t_hat,X[:,i,0]+np.random.normal(0,0.1,n),c='gray')#c=cell_colors);
+            ax.scatter(t_hat,X[:,i,0]+np.random.normal(0,0.1,n),c=cell_colors,s=1);
             ax.set_title(gene_name[i])
         else:
             i=idx[0]
-            ax[0].scatter(t_hat,X[:,i,0]+np.random.normal(0,0.1,n),c='gray')#c=cell_colors);
+            ax[0].scatter(t_hat,X[:,i,0]+np.random.normal(0,0.1,n),c=cell_colors,s=1);
             ax[0].set_title(gene_name[i]+" unspliced")
             for ic in range(1,c):
-                ax[ic].scatter(t_hat,X[:,i,1]+np.random.normal(0,0.1,n),c='gray')#c=cell_colors);
+                ax[ic].scatter(t_hat,X[:,i,1]+np.random.normal(0,0.1,n),c=cell_colors,s=1);
                 ax[ic].set_title(gene_name[i]+" spliced")
 
     else:
         for i,j in enumerate(idx):
             if c==1:
-                ax[i].scatter(t_hat,X[:,j,0]+np.random.normal(0,0.1,n),c='gray')#c=cell_colors);
+                ax[i].scatter(t_hat,X[:,j,0]+np.random.normal(0,0.1,n),c=cell_colors,s=1);
                 ax[i].set_title(gene_name[j])
             else:
-                ax[0,i].scatter(t_hat,X[:,i,0]+np.random.normal(0,0.1,n),c='gray')#c=cell_colors);
+                ax[0,i].scatter(t_hat,X[:,j,0]+np.random.normal(0,0.1,n),c=cell_colors,s=1);
                 ax[0,i].set_title(gene_name[j])
                 for ic in range(1,c):
-                    ax[ic,i].scatter(t_hat,X[:,j,ic]+np.random.normal(0,0.1,n),c='gray')#c=cell_colors);
+                    ax[ic,i].scatter(t_hat,X[:,j,ic]+np.random.normal(0,0.1,n),c=cell_colors,s=1);
     
     ## plot Y
     Y_hat = np.zeros((L,10000,p,2))
     for l in range(L):
         t=np.linspace(tau[0],tau[-1],10000)
-        theta_l_hat = np.concatenate((theta_hat[:,traj.topo[l]], theta_hat[:,-4:]), axis=1)
+        if traj.model == "two_species":
+            theta_l_hat = np.concatenate((theta_hat[:,traj.topo[l]], theta_hat[:,-4:]), axis=1)
+        elif traj.model == "two_species_ss":
+            theta_l_hat = np.concatenate((theta_hat[:,traj.topo[l]], theta_hat[:,-3:]), axis=1)
+        else:
+            print("update plot_phase to include", traj.model)
         Y_hat[l] = traj.get_Y(theta_l_hat,t,tau) # m*p*2
         y_hat = Y_hat[l]
         if len(idx)==1:
