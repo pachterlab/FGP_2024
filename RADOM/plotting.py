@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-colors = ['purple', 'blue', 'green', 'orange', 'r']
-colors20 = np.vstack((plt.cm.tab20b(np.linspace(0., 1, 20))[::2], plt.cm.tab20c(np.linspace(0, 1, 20))[1::2]))    
+#colors = ['purple', 'blue', 'green', 'orange', 'r']
+#colors20 = np.vstack((plt.cm.tab20b(np.linspace(0., 1, 20))[::2], plt.cm.tab20c(np.linspace(0, 1, 20))[1::2]))    
 
 def plot_t(weight,l=0,ax=None,t=None):
     m=np.shape(weight)[-1]
@@ -18,12 +18,13 @@ def plot_t(weight,l=0,ax=None,t=None):
         right = left + width
         top = bottom + height
        
-        ax.imshow(weight[:,l,:],aspect="auto");
-        ax.text(right, top,"cor="+str(np.around(np.corrcoef(t_hat,t)[0,1],2)), horizontalalignment='right', 
-                 verticalalignment='top', transform=ax.transAxes, color="white",fontsize=36);
+        order=np.argsort(t)
+        ax.imshow(weight[order,l,:],aspect="auto",cmap='Blues');
+        ax.text(0.9, 0.9, "cor="+str(np.around(np.corrcoef(t_hat,t)[0,1],2)), horizontalalignment='right', 
+                 verticalalignment='top', transform=ax.transAxes, color="black",fontsize=24);
     else:
-        ord=np.argsort(t_hat)
-        ax.imshow(weight[ord,l,:],aspect="auto");
+        order=np.argsort(t_hat)
+        ax.imshow(weight[order,l,:],aspect="auto",cmap='Blues');
 
         
 def plot_theta(theta,theta_hat):

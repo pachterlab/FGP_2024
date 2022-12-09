@@ -11,6 +11,7 @@ from tqdm import tqdm
 from multiprocessing import Pool
 from scipy.special import logsumexp
 from importlib import import_module
+from scipy.optimize import minimize_scalar
 import copy
 
     
@@ -164,6 +165,57 @@ class Trajectory:
         
         return Q, lower_bound
     
+    def update_time_scale_j(self,X,gene_idx=None,parallel=False,n_threads=1):
+    
+        def Obj(x,theta_i,X_i,t,tau,topo):
+            new_theta = theta_i.copy()
+            new_theta[:,-2:] *= 10**x
+            logL = self.get_logL(X_i,new_theta,t,tau,topo) # with size (n,self.L,self.m)     
+            if self.prior is not None:
+                logL += np.log(self.prior)
+            else:
+                logL += - np.log(self.m) - np.log(self.L)
+            
+            ## Q is the posterior
+            ## Q = softmax(logL, axis=(-2,-1))
+            a = np.amax(logL,axis=(-2,-1))
+            temp = np.exp(logL-a[:,None,None])
+            temp_sum = temp.sum(axis=(-2,-1))
+            lower_bound = np.mean( np.log(temp_sum) + a )
+            return -lower_bound
+            
+        res = minimize_scalar(fun=Obj, args=(self.theta,X,self.t,self.tau,self.topo), bounds=(-1, 1), method='bounded',
+                              options={'maxiter': 10000,'disp': False})
+        self.theta[:,-2:] *= 10**res.x
+
+        return 
+    
+    def update_global_time_scale(self, X):
+    
+        def Obj(x,theta,X,t,tau,topo):
+            new_theta = theta.copy()
+            new_theta[:,-2:] *= 10**x
+            logL = self.get_logL(X,new_theta,t,tau,topo) # with size (n,self.L,self.m)     
+            if self.prior is not None:
+                logL += np.log(self.prior)
+            else:
+                logL += - np.log(self.m) - np.log(self.L)
+            
+            ## Q is the posterior
+            ## Q = softmax(logL, axis=(-2,-1))
+            a = np.amax(logL,axis=(-2,-1))
+            temp = np.exp(logL-a[:,None,None])
+            temp_sum = temp.sum(axis=(-2,-1))
+            lower_bound = np.mean( np.log(temp_sum) + a )
+            return -lower_bound
+            
+        res = minimize_scalar(fun=Obj, args=(self.theta,X,self.t,self.tau,self.topo), bounds=(-1, 1), method='bounded',
+                              options={'maxiter': 10000,'disp': False})
+        self.theta[:,-2:] *= 10**res.x
+
+        return 
+    
+    
     def _fit(self, X, theta, epoch, tol, parallel, n_threads):
         """
         The method fits the model by iterating between E-step and M-step for at most `epoch` iterations.
@@ -185,37 +237,45 @@ class Trajectory:
 
         Returns
         -------
-        theta_hist : TYPE
-            DESCRIPTION.
-        weight_hist : TYPE
-            DESCRIPTION.
-        lower_bounds : TYPE
-            DESCRIPTION.
 
         """
         
         n, p, _ = np.shape(X)
         lower_bound = -np.inf
+        lower_bounds = []
         self.converged = False
         self.theta = theta.copy()
+        
+        ## for investigating
+        #self.theta_hist = []
+        #self.Q_hist = []
+
         
         silence = not bool(self.verbose)
         for i in tqdm(range(epoch), disable=silence):
             prev_lower_bound = lower_bound
-            
+            if i%3==2:
+                self.update_global_time_scale(X)
             ## EM algorithm   
-            Q, lower_bound = self.update_weight(X) ### E step   
+            Q, lower_bound = self.update_weight(X) ### E step  
+            lower_bounds.append(lower_bound)
+            #self.Q_hist.append(Q)
             self.update_theta(X,Q,parallel=parallel,n_threads=n_threads) ### M step
+            #self.theta_hist.append(self.theta.copy())
             
             ## check converged
             change = lower_bound - prev_lower_bound
             if abs(change) < tol:
                 self.converged = True
                 break
-        
-        return [Q, lower_bound]
+            
+        self.update_global_time_scale(X)
+        Q, lower_bound = self.update_weight(X) 
+        lower_bounds.append(lower_bound)
+            
+        return [Q, lower_bounds]
     
-    def fit_warm_start(self, X, Q=None, theta=None, epoch=10, tol=1e-4, parallel=False, n_threads=1):
+    def fit_warm_start(self, X, Q=None, theta=None, epoch=20, tol=1e-4, parallel=False, n_threads=1):
         """
         The method fits the model by iterating between E-step and M-step for at most `epoch` iterations.
         The warm start means that either a reasonable Q or theta is provided.
@@ -267,7 +327,7 @@ class Trajectory:
         
         return self._fit(X, theta, epoch, tol, parallel, n_threads)
     
-    def fit_multi_init(self, X, n_init=3, epoch=10, tol=1e-4, parallel=False, n_threads=1, seed=42):
+    def fit_multi_init(self, X, n_init=3, epoch=20, tol=1e-4, parallel=False, n_threads=1, seed=42):
         """
         The method fits the model n_init times and sets the parameters with
         which the model has the largest likelihood or lower bound. Within each
@@ -300,7 +360,7 @@ class Trajectory:
         n, p, _ = np.shape(X)
      
         elbos = []
-        thetas = []
+        #thetas = []
         max_lower_bound = -np.inf
         
         np.random.seed(seed)
@@ -313,13 +373,13 @@ class Trajectory:
             Q, lower_bound = self._fit(X, self.theta, epoch, tol, parallel, n_threads)
             theta0 = self.theta.copy()
             
-            if lower_bound > max_lower_bound or max_lower_bound == -np.inf:
-                max_lower_bound = lower_bound
+            if lower_bound[-1] > max_lower_bound or max_lower_bound == -np.inf:
+                max_lower_bound = lower_bound[-1]
                 best_theta = self._get_theta()
                 best_Q = Q.copy()
                 
             elbos.append(lower_bound)
-            thetas.append(self._get_theta())
+            #thetas.append(self._get_theta())
 
             ## For each initialization, test additional configurations 
             ## generated by permutaions of states
@@ -353,20 +413,20 @@ class Trajectory:
                     theta[:,:(self.n_states+1)] = theta0[:,np.array(perm)]
                     Q, lower_bound = self._fit(X, theta, epoch, tol, parallel, n_threads)
     
-                    if lower_bound > max_lower_bound or max_lower_bound == -np.inf:
-                        max_lower_bound = lower_bound
+                    if lower_bound[-1] > max_lower_bound or max_lower_bound == -np.inf:
+                        max_lower_bound = lower_bound[-1]
                         best_theta = self._get_theta()
                         best_Q = Q.copy()
     
                     elbos.append(lower_bound)
-                    thetas.append(self._get_theta())
+                    #thetas.append(self._get_theta())
                     
                     ## Enough additional configurations done
                     if len(configs) > 10: 
                         break
                 
         self.theta = best_theta
-        self.thetas = thetas
+        #self.thetas = thetas
         return [best_Q, elbos]
     
     def fit(self, X, Q=None, theta=None, prior=None, model_restrictions=None, m=100, n_init=3, epoch=20, tol=1e-4, parallel=False, n_threads=1, seed=42):
