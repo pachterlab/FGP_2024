@@ -11,6 +11,7 @@ from tqdm import tqdm
 from multiprocessing import Pool
 from scipy.special import logsumexp
 from importlib import import_module
+from scipy.optimize import minimize_scalar
 import copy
 
     
@@ -164,6 +165,33 @@ class Trajectory:
         
         return Q, lower_bound
     
+    
+    def update_time_scale(self, X):
+    
+        def Obj(x,theta,X,t,tau,topo):
+            new_theta = theta.copy()
+            new_theta[:,-2:] *= 10**x
+            logL = self.get_logL(X,new_theta,t,tau,topo) # with size (n,self.L,self.m)     
+            if self.prior is not None:
+                logL += np.log(self.prior)
+            else:
+                logL += - np.log(self.m) - np.log(self.L)
+            
+            ## Q is the posterior
+            ## Q = softmax(logL, axis=(-2,-1))
+            a = np.amax(logL,axis=(-2,-1))
+            temp = np.exp(logL-a[:,None,None])
+            temp_sum = temp.sum(axis=(-2,-1))
+            lower_bound = np.mean( np.log(temp_sum) + a )
+            return -lower_bound
+            
+        res = minimize_scalar(fun=Obj, args=(self.theta,X,self.t,self.tau,self.topo), bounds=(-1, 1), method='bounded',
+                              options={'maxiter': 10000,'disp': False})
+        self.theta[:,-2:] *= 10**res.x
+
+        return 
+    
+    
     def _fit(self, X, theta, epoch, tol, parallel, n_threads):
         """
         The method fits the model by iterating between E-step and M-step for at most `epoch` iterations.
@@ -199,23 +227,32 @@ class Trajectory:
         self.converged = False
         self.theta = theta.copy()
         
+        ## for investigating
+        self.theta_hist = []
+        self.Q_hist = []
+        
         silence = not bool(self.verbose)
         for i in tqdm(range(epoch), disable=silence):
             prev_lower_bound = lower_bound
             
             ## EM algorithm   
             Q, lower_bound = self.update_weight(X) ### E step   
+            self.Q_hist.append(Q)
             self.update_theta(X,Q,parallel=parallel,n_threads=n_threads) ### M step
+            self.theta_hist.append(self.theta.copy())
             
             ## check converged
             change = lower_bound - prev_lower_bound
             if abs(change) < tol:
                 self.converged = True
                 break
-        
+            
+        self.update_time_scale(X)
+        Q, lower_bound = self.update_weight(X) 
+            
         return [Q, lower_bound]
     
-    def fit_warm_start(self, X, Q=None, theta=None, epoch=10, tol=1e-4, parallel=False, n_threads=1):
+    def fit_warm_start(self, X, Q=None, theta=None, epoch=20, tol=1e-4, parallel=False, n_threads=1):
         """
         The method fits the model by iterating between E-step and M-step for at most `epoch` iterations.
         The warm start means that either a reasonable Q or theta is provided.
@@ -267,7 +304,7 @@ class Trajectory:
         
         return self._fit(X, theta, epoch, tol, parallel, n_threads)
     
-    def fit_multi_init(self, X, n_init=3, epoch=10, tol=1e-4, parallel=False, n_threads=1, seed=42):
+    def fit_multi_init(self, X, n_init=3, epoch=20, tol=1e-4, parallel=False, n_threads=1, seed=42):
         """
         The method fits the model n_init times and sets the parameters with
         which the model has the largest likelihood or lower bound. Within each

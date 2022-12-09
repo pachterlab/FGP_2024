@@ -4,14 +4,15 @@ import matplotlib.pyplot as plt
 from inference import Trajectory
 from simulation import simulate_data
 from plotting import plot_phase, plot_t, plot_theta
-
+    
+    
 if __name__ == '__main__':
     #%%    
-    topo = np.array([[0]])
-    tau=(0,1)
-    n = 2000
+    topo = np.array([[0,1]])
+    tau=(0,1,2)
+    n = 1000
     p = 100
-    theta, t, Y, X = simulate_data(topo, tau, n, p, model="two_species_ss",)
+    theta, t, Y, X = simulate_data(topo, tau, n, p, model="two_species_ss")
     
     plot_p = min(10, p)
     fig, ax = plt.subplots(1,plot_p,figsize=(6*plot_p,4))
@@ -22,7 +23,7 @@ if __name__ == '__main__':
         ax[i].set_title(j)
        
     ##### fit with correct Q0 #####
-    traj = Trajectory(topo, tau, model="two_species_ss")
+    traj = Trajectory(topo, tau, model="two_species_ss",verbose=1)
     L = len(topo)
     resol = 100
     m = n//resol
@@ -30,11 +31,17 @@ if __name__ == '__main__':
     for l in range(L):
         for i in range(n):
             Q0[i+n*l,l,i//resol] = 1
-    
-    Q, lower_bound = traj.fit(X, Q=Q0, epoch=10)#, parallel=True, n_threads=4)
+    Q0 = np.random.uniform(0,1,size=Q0.shape)
+    Q0 /= Q0.sum(axis=(-2,-1),keepdims=True)
+    traj = traj.fit(X, epoch=10)#, parallel=True, n_threads=4)
     plot_theta(theta,traj.theta)
-    plot_t(Q, l=0, t=t)
-    plot_phase(traj)
+    plot_t(traj.Q, l=0, t=t)
+    #plot_phase(traj)
+    
+    
+    #for i in range(10):
+    #    #plot_theta(theta,traj.theta_hist[i])
+    #    plot_t(traj.Q_hist[i*10], l=0, t=t)
     
     ##### fit #####
     """
