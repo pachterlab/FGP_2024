@@ -109,7 +109,7 @@ def plot_theta_diff(theta_hat,K,gene_list=None):
     ax[5].set_title("gamma");
 
           
-def plot_y(traj,idx,gene_name=None,cell_colors=None):
+def plot_y(traj,idx=np.arange(10),gene_name=None,cell_colors=None):
     X,weight = traj.X, traj.Q
     n,p,c=X.shape
     theta_hat = traj.theta.copy()

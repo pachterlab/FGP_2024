@@ -407,7 +407,7 @@ if __name__ == "__main__":
     marginal_weight = np.zeros((L,m,1))
     for l in range(len(topo)):
         weight_l = Q[:,l,:] #n*m
-        x_weighted[l] = weight_l.T@x # m*2
+        x_weighted[l] = weight_l.T@X[:,4] # m*2
         marginal_weight[l] =  weight_l.sum(axis=0)[:,None] # m*1
     plt.imshow(Q[:,0],aspect='auto')
    

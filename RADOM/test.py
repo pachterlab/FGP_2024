@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
+import copy
 from inference import Trajectory
 from simulation import simulate_data
 from plotting import plot_phase, plot_t, plot_theta
@@ -12,7 +12,7 @@ if __name__ == '__main__':
     tau=(0,1,2)
     n = 1000
     p = 100
-    theta, t, Y, X = simulate_data(topo, tau, n, p, model="two_species_ss")
+    theta, t, Y, X = simulate_data(topo, tau, n, p, model="two_species_ss",random_seed=2022)
     
     plot_p = min(10, p)
     fig, ax = plt.subplots(1,plot_p,figsize=(6*plot_p,4))
@@ -31,17 +31,73 @@ if __name__ == '__main__':
     for l in range(L):
         for i in range(n):
             Q0[i+n*l,l,i//resol] = 1
-    Q0 = np.random.uniform(0,1,size=Q0.shape)
+    #Q0 = np.random.uniform(0,1,size=Q0.shape)
     Q0 /= Q0.sum(axis=(-2,-1),keepdims=True)
-    traj = traj.fit(X, epoch=10)#, parallel=True, n_threads=4)
+    traj = traj.fit(X, n_init=10, epoch=10)#, parallel=True, n_threads=4)
+    
+    plt.plot( [traj.elbos[i][-1] for i in range(len(traj.elbos))],'.')
     plot_theta(theta,traj.theta)
-    plot_t(traj.Q, l=0, t=t)
-    #plot_phase(traj)
+    plot_t(traj.Q,t=t)
+    plot_phase(traj)
     
-    
-    #for i in range(10):
+    for i in range(18):
     #    #plot_theta(theta,traj.theta_hist[i])
-    #    plot_t(traj.Q_hist[i*10], l=0, t=t)
+        plot_t(traj.Qs[i], l=0, t=t)
+        plt.title(i)
+        
+    ####### copy
+    traj_copy = copy.deepcopy(traj)
+    traj_copy.Q = traj.Qs[3]
+    traj_copy.theta = traj.thetas[3]
+    traj_copy.Q = traj_copy.normalize_Q(traj_copy.Q)
+    traj_copy.theta = traj_copy.theta + 0.5*np.random.uniform(-traj_copy.theta,traj_copy.theta)
+    traj_copy.update_theta(X,traj_copy.Q)
+    
+    j = 74
+    Q = traj_copy.Q
+    x = traj.X[:,j]
+    x_weighted = np.zeros((traj.L,traj.m,2))
+    marginal_weight = np.zeros((traj.L,traj.m,1))
+    for l in range(len(topo)):
+        weight_l = Q[:,l,:] #n*m
+        x_weighted[l] = weight_l.T@x # m*2 = m*n @ n*2
+        marginal_weight[l] =  weight_l.sum(axis=0)[:,None] # m*1
+    neglogL_jac(traj_copy.theta[j], x_weighted, marginal_weight, traj.t, tau, topo)
+    
+    plot_t(traj_copy.Q, l=0, t=t)
+    
+    plot_phase(traj_copy)
+    plot_theta(theta,traj_copy.theta)
+    
+    idx = np.where(np.abs(traj_copy.theta[:,-1] - theta[:,-1])/theta[:,-1] > 1 )[0]
+    plot_phase(traj_copy,idx=idx)
+    #plt.plot(traj.elbos[3],'.')
+    #plt.plot(traj.elbos[0],'.')
+    plt.plot(traj_copy.Q.sum(axis=(0,1)),'.')
+    plt.yscale('log')
+    
+    logL = traj.get_logL(X,traj.theta,traj.t,traj.tau,traj.topo) 
+    ## Q is the posterior
+    ## Q = softmax(logL, axis=(-2,-1))
+    a = np.amax(logL,axis=(-2,-1))
+    temp = np.exp(logL-a[:,None,None])
+    temp_sum = temp.sum(axis=(-2,-1))
+    Q = temp/temp_sum[:,None,None]
+    lower_bound = np.mean( np.log(temp_sum) + a )
+    plt.hist(a,bins=np.linspace(6000,9000,1001))
+    
+    logL = traj_copy.get_logL(X,traj_copy.theta,traj_copy.t,traj_copy.tau,traj_copy.topo) 
+    
+    ## Q is the posterior
+    ## Q = softmax(logL, axis=(-2,-1))
+    a = np.amax(logL,axis=(-2,-1))
+    temp = np.exp(logL-a[:,None,None])
+    temp_sum = temp.sum(axis=(-2,-1))
+    Q = temp/temp_sum[:,None,None]
+    lower_bound = np.mean( np.log(temp_sum) + a )
+    plt.hist(a,bins=np.linspace(6000,9000,1001))
+    
+    
     
     ##### fit #####
     """
