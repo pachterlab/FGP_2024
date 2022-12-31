@@ -22,9 +22,9 @@ eps = 1e-10
 def guess_theta(X,n_states):
     p = X.shape[1]
     theta = np.zeros((p,n_states+3))
-    theta[:,0:-2]=np.mean(X[:,:,0],axis=0)[:,None]
-    theta[:,-2]=1
-    theta[:,-1] = np.mean(X[:,:,0],axis=0)/(np.mean(X[:,:,1],axis=0)+eps)
+    theta[:,0:-2] = np.mean(X[:,:,0],axis=0)[:,None]
+    theta[:,-2] = np.sqrt(np.mean(X[:,:,1],axis=0)/(np.mean(X[:,:,0],axis=0)+eps))
+    theta[:,-1] = np.sqrt(np.mean(X[:,:,0],axis=0)/(np.mean(X[:,:,1],axis=0)+eps))
     return theta
 
 
@@ -245,7 +245,7 @@ def get_logL(X,theta,t,tau,topo):
     return logL
 
 
-def update_theta_j(theta0, x, Q, t, tau, topo, restrictions=None, bnd=10000, bnd_beta=1000, miter=1000):
+def update_theta_j(theta0, x, Q, t, tau, topo, restrictions=None, bnd=10000, bnd_beta=10000, miter=1000):
     """
     with jac
 
@@ -282,7 +282,7 @@ def update_theta_j(theta0, x, Q, t, tau, topo, restrictions=None, bnd=10000, bnd
         res = update_theta_j_restricted(theta0, x, Q, t, tau, topo, restrictions, bnd, bnd_beta, miter)
     return res
 
-def update_theta_j_unrestricted(theta0, x, Q, t, tau, topo, bnd=10000, bnd_beta=1000, miter=1000):
+def update_theta_j_unrestricted(theta0, x, Q, t, tau, topo, bnd=10000, bnd_beta=1000, miter=10000):
     """
     with jac
 
@@ -323,13 +323,17 @@ def update_theta_j_unrestricted(theta0, x, Q, t, tau, topo, bnd=10000, bnd_beta=
         weight_l = Q[:,l,:] #n*m
         x_weighted[l] = weight_l.T@x # m*2 = m*n @ n*2
         marginal_weight[l] =  weight_l.sum(axis=0)[:,None] # m*1
+       
+    theta00 = theta0.copy()
+    if np.max(theta00[:-2]) > np.maximum( np.max(x[:,0]) , np.max(x[:,1]) * theta00[-1] / theta00[-2]):
+        theta00[:-2] = np.sqrt( np.mean(x[:,0]) * np.mean(x[:,1]) * theta00[-1] / theta00[-2])
     
-    res = minimize(fun=neglogL, x0=theta0, args=(x_weighted,marginal_weight,t,tau,topo), method = 'L-BFGS-B' , jac = neglogL_jac, bounds=bound, options={'maxiter': miter,'disp': False}) 
+    res = minimize(fun=neglogL, x0=theta00, args=(x_weighted,marginal_weight,t,tau,topo), method = 'L-BFGS-B' , jac = neglogL_jac, bounds=bound, options={'maxiter': miter,'disp': False}) 
     return res.x
 
-def update_theta_j_restricted(theta0, x, Q, t, tau, topo, restrictions, bnd=10000, bnd_beta=1000, miter=1000):
+def update_theta_j_restricted(theta0, x, Q, t, tau, topo, restrictions, bnd=10000, bnd_beta=1000, miter=10000):
     # define a new neglogL inside with fewer parameters
-    redundant, blanket = restrictions # 1,0 => a[1] = a[0], -3, -4 => s_0 = u_0*beta/gamma, 0,-4 => a[0] = u_0
+    redundant, blanket = restrictions # 1,0 => a[1] = a[0], 0, -3 => a[0] = u_0,
     if len(redundant) >= len(theta0) - 3:
         theta = np.ones(len(theta0))*np.mean(x[:,0])
         theta[-2] = 1

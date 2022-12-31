@@ -317,7 +317,44 @@ def get_logL(X,theta,t,tau,topo):
     #logL -= logX
     return logL
 
-def update_theta_j(theta0, x, Q, t, tau, topo, bnd=10000, bnd_beta=1000, miter=1000):
+def update_theta_j(theta0, x, Q, t, tau, topo, restrictions=None, bnd=10000, bnd_beta=1000, miter=1000):
+    """
+    with jac
+
+    Parameters
+    ----------
+    theta0 : TYPE
+        DESCRIPTION.
+    x : TYPE
+        DESCRIPTION.
+    Q : TYPE
+        DESCRIPTION.
+    t : TYPE
+        DESCRIPTION.
+    tau : TYPE
+        DESCRIPTION.
+    topo : TYPE
+        DESCRIPTION.
+    bnd : TYPE, optional
+        DESCRIPTION. The default is 1000.
+    bnd_beta : TYPE, optional
+        DESCRIPTION. The default is 100.
+    miter : TYPE, optional
+        DESCRIPTION. The default is 1000.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    """
+    if restrictions==None:
+        res = update_theta_j_unrestricted(theta0, x, Q, t, tau, topo, bnd, bnd_beta, miter)
+    else:
+        res = update_theta_j_restricted(theta0, x, Q, t, tau, topo, restrictions, bnd, bnd_beta, miter)
+    return res
+
+def update_theta_j_unrestricted(theta0, x, Q, t, tau, topo, bnd=10000, bnd_beta=1000, miter=1000):
     """
     with jac
 
@@ -355,7 +392,7 @@ def update_theta_j(theta0, x, Q, t, tau, topo, bnd=10000, bnd_beta=1000, miter=1
     return res.x
 
 
-def update_nested_theta_j(theta0, x, Q, t, tau, topo, restrictions, bnd=10000, bnd_beta=1000, miter=1000):
+def update_theta_j_restricted(theta0, x, Q, t, tau, topo, restrictions, bnd=10000, bnd_beta=1000, miter=1000):
     return None
 
 if __name__ == "__main__":

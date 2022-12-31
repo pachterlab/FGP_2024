@@ -42,11 +42,13 @@ class Trajectory:
         ## import model specific methods from the provided file
         tempmod = import_module("models."+model)
         #tempmod = import_module(".models."+model,"RADOM")
-        self.get_Y = tempmod.get_Y
         self.guess_theta = tempmod.guess_theta
+        self.check_params = tempmod.check_params
+        self.get_Y = tempmod.get_Y
         self.get_logL =  tempmod.get_logL
         self.update_theta_j = tempmod.update_theta_j
         del tempmod 
+        
         return None
     
     def _set_m(self,m):
@@ -105,9 +107,9 @@ class Trajectory:
             Input_args = []
             for j in gene_idx:
                 if j in restricted_gene_idx:
-                    Input_args.append((self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, self.model_restrictions[j]))
+                    Input_args.append((self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, self.params, self.model_restrictions[j]))
                 else:
-                    Input_args.append((self.theta[j], X[:,j], Q, self.t, self.tau, self.topo))
+                    Input_args.append((self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, self.params))
             with Pool(n_threads) as pool:      
                 new_theta = pool.starmap(self.update_theta_j, Input_args)
             new_theta = np.array(new_theta)
@@ -115,9 +117,9 @@ class Trajectory:
             new_theta = np.zeros((len(gene_idx),n_theta))
             for i,j in enumerate(gene_idx): 
                 if j in restricted_gene_idx:
-                    new_theta[i]=self.update_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, self.model_restrictions[j])
+                    new_theta[i]=self.update_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, self.params, self.model_restrictions[j])
                 else:
-                    new_theta[i]=self.update_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo)
+                    new_theta[i]=self.update_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, self.params)
                     
         self.theta[gene_idx] = new_theta
         return
@@ -149,7 +151,7 @@ class Trajectory:
             
         #n,p,s=np.shape(X)
         
-        logL = self.get_logL(X,self.theta,self.t,self.tau,self.topo) # with size (n,self.L,self.m)     
+        logL = self.get_logL(X,self.theta,self.t,self.tau,self.topo,self.params) # with size (n,self.L,self.m)     
         if self.prior is not None:
             logL += np.log(self.prior)
         else:
@@ -167,21 +169,21 @@ class Trajectory:
     
     def normalize_Q(self, Q):
         n, L, m = np.shape(Q)
-        idx = np.where(Q.sum(axis=(0,1)) > 0.1*n/m)[0]
+        idx = np.where(Q.sum(axis=(0,1)) > 1/m)[0]
         M = len(idx)     
         map2idx = list(map(lambda x: idx[int(x*(M-1)/(m-1))], range(m)))
 
-        new_Q = np.ones_like(Q)*eps
+        new_Q = np.zeros_like(Q)
         new_Q += Q[:,:,map2idx]
         new_Q /= new_Q.sum(axis=(-2,-1),keepdims=True)
         return new_Q
         
     def update_global_time_scale(self, X):
     
-        def Obj(x,theta,X,t,tau,topo):
+        def Obj(x,theta,X,t,tau,topo,params):
             new_theta = theta.copy()
             new_theta[:,-2:] *= 10**x
-            logL = self.get_logL(X,new_theta,t,tau,topo) # with size (n,self.L,self.m)     
+            logL = self.get_logL(X,new_theta,t,tau,topo,params) # with size (n,self.L,self.m)     
             if self.prior is not None:
                 logL += np.log(self.prior)
             else:
@@ -195,10 +197,9 @@ class Trajectory:
             lower_bound = np.mean( np.log(temp_sum) + a )
             return -lower_bound
             
-        res = minimize_scalar(fun=Obj, args=(self.theta,X,self.t,self.tau,self.topo), bounds=(-2, 2), method='bounded',
-                              options={'maxiter': 10000,'disp': False})
+        res = minimize_scalar(fun=Obj, args=(self.theta,X,self.t,self.tau,self.topo,self.params), bounds=(-2, 2), method='bounded',
+                              options={'maxiter': 100000,'disp': False})
         self.theta[:,-2:] *= 10**res.x
-
         return 
     
     
@@ -245,11 +246,12 @@ class Trajectory:
             prev_lower_bound = lower_bound
             ## EM algorithm   
             ### normalization
-            if i%3 == 1:
+            if i%10 == 5:
                 Q = self.normalize_Q(Q)
             
             ### M step 
             self.update_theta(X,Q,parallel=parallel,n_threads=n_threads) ### M step
+            self.update_global_time_scale(X)
             #self.theta_hist.append(self.theta.copy())
             
             ### E step 
@@ -262,11 +264,7 @@ class Trajectory:
             if abs(change) < tol:
                 self.converged = True
                 break
-            
-        self.update_global_time_scale(X)
-        Q, lower_bound = self.update_weight(X) 
-        lower_bounds.append(lower_bound)
-            
+        
         return [Q, lower_bounds]
     
     def fit_warm_start(self, X, Q=None, theta=None, epoch=20, tol=1e-4, parallel=False, n_threads=1):
@@ -313,7 +311,7 @@ class Trajectory:
         
         return self._fit(X, theta, epoch, tol, parallel, n_threads)
     
-    def fit_multi_init(self, X, n_init=10, perm_theta = False, epoch=20, tol=1e-4, parallel=False, n_threads=1, seed=42):
+    def fit_multi_init(self, X, n_init=10, perm_theta=False, epoch=100, tol=1e-4, parallel=False, n_threads=1, seed=42):
         """
         The method fits the model n_init times and sets the parameters with
         which the model has the largest likelihood or lower bound. Within each
@@ -420,7 +418,7 @@ class Trajectory:
             
         return [best_Q, elbos]
     
-    def fit(self, X, Q=None, theta=None, prior=None, model_restrictions=None, m=100, n_init=3, perm_theta = True, epoch=20, tol=1e-4, parallel=False, n_threads=1, seed=42):
+    def fit(self, X, Q=None, theta=None, prior=None, params={}, model_restrictions=None, m=100, n_init=10, perm_theta = False, epoch=100, tol=1e-4, parallel=False, n_threads=1, seed=42):
         """
         
 
@@ -451,6 +449,8 @@ class Trajectory:
 
         """
         
+        self.params = params
+        self.check_params(self.params)
         
         self.prior = prior
         self._set_m(m)
@@ -458,7 +458,6 @@ class Trajectory:
         if prior is not None:
             if Q is None:
                 assert m == prior.shape[-1]  
-                
             else:
                 assert Q.shape == prior.shape
         
@@ -479,7 +478,7 @@ class Trajectory:
     
     def compute_lower_bound(self,X):
         """
-        Compute the lower bound of marginal log likelihood log P(X|theta)
+        Compute the lower bound of marginal log likelihood log(P(X|theta))
 
         Parameters
         ----------
@@ -491,17 +490,15 @@ class Trajectory:
         scalar
             lower bound value
         """
-        #n,p,_=np.shape(X)
-        #Y = np.zeros((self.L,self.m,p,2))
-        #for l in range(self.L):
-        #    theta_l = np.concatenate((self.theta[:,self.topo[l]], self.theta[:,-4:]), axis=1)
-        #    Y[l] = get_Y(theta_l,self.t,self.tau) # m*p*2
-        #logL =  np.sum(X[:,None,None,:,:] * np.log(Y[None,:]+eps) - Y[None,:], axis=(-2,-1)) # n*L*m*p*2 -> n*L*m
-        #logL = np.tensordot(X, np.log(eps + Y), axes=([-2,-1],[-2,-1])) # logL:n*L*m
-        #logL -= np.sum(Y,axis=(-2,-1))
-        #logL += np.log(self.prior_) where self.prior_ = 1/L/m
+        
         logL = self.get_logL(X,self.theta,self.t,self.tau,self.topo) # with size (n,self.L,self.m)
-        return np.mean(logsumexp(a=logL, axis=(-2,-1)))-np.log(self.m)-np.log(self.L)
+        
+        if self.prior is not None:
+            logL += np.log(self.prior)
+        else:
+            logL += - np.log(self.m) - np.log(self.L)
+            
+        return np.mean(logsumexp(a=logL, axis=(-2,-1)))
 
     
     def compute_AIC(self, X):
@@ -530,12 +527,12 @@ class Trajectory:
                 self.k -= 1
 
         logL = self.compute_lower_bound(X)
-        AIC = 2*self.k-2*n*logL
-        AICc = AIC + 2*self.k*(self.k+1)/(X.size-self.k-1)
-        return  AICc
+        AIC = logL - self.k/n
+        #AICc = AIC + 2*self.k*(self.k+1)/(X.size-self.k-1)
+        return  AIC
     
     
-    def compare_model(self, X, new_model, epoch=1, tol=1e-4, parallel=False, n_threads=1):
+    def compare_model(self, X, new_model, epoch=9, tol=1e-4, parallel=False, n_threads=1):
         """
         
 
