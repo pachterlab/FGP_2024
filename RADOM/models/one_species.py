@@ -191,7 +191,7 @@ def neglogL_jac(theta, x_weighted, marginal_weight, t, tau, topo):
         jac[theta_idx] += np.sum( coef[:,:,None] * dY_dtheta, axis=(0,1))
     return - jac
 
-def get_logL(X,theta,t,tau,topo):
+def get_logL(X,theta,t,tau,topo,params):
     L=len(topo)
     m=len(t)
     p=len(theta)
@@ -205,7 +205,15 @@ def get_logL(X,theta,t,tau,topo):
 
     return logL
 
-def update_theta_j(theta0, x, Q, t, tau, topo, bnd=1000, bnd_beta=100, miter=1000):
+def update_theta_j(theta0, x, Q, t, tau, topo, params, bnd=1000, bnd_beta=100, miter=1000):
+    
+    if restrictions==None:
+        res = update_theta_j_unrestricted(theta0, x, Q, t, tau, topo, bnd, bnd_beta, miter)
+    else:
+        res = update_theta_j_restricted(theta0, x, Q, t, tau, topo, restrictions, bnd, bnd_beta, miter)
+    return res
+
+def update_theta_j_unrestricted(theta0, x, Q, t, tau, topo, r, bnd=10000, bnd_beta=1000, miter=10000):
     """
     with jac
 
@@ -250,7 +258,7 @@ def update_theta_j(theta0, x, Q, t, tau, topo, bnd=1000, bnd_beta=100, miter=100
     res = minimize(fun=neglogL, x0=theta0, args=(x_weighted,marginal_weight,t,tau,topo), method = 'L-BFGS-B' , jac = neglogL_jac, bounds=bound, options={'maxiter': miter,'disp': False}) 
     return res.x
 
-def update_nested_theta_j(theta0, x, Q, t, tau, topo, restrictions, bnd=1000, bnd_beta=100, miter=10000):
+def update_theta_j_restricted(theta0, x, Q, t, tau, topo, restrictions, bnd=1000, bnd_beta=100, miter=10000):
     # define a new neglogL inside with fewer parameters
     redundant, blanket = restrictions # 1,0 => a[1] = a[0], -3, -4 => s_0 = u_0*beta/gamma, 0,-4 => a[0] = u_0
     if len(redundant)+2 >= len(theta0):

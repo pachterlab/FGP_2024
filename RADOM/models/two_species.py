@@ -18,6 +18,10 @@ from scipy.optimize import minimize
 # global parameters: upper and lower limits for numerical stability
 eps = 1e-10
 
+
+def check_params(params):
+    return
+
 def guess_theta(X,n_states):
     p = X.shape[1]
     theta = np.zeros((p,n_states+4))
@@ -303,7 +307,7 @@ def neglogL_jac(theta, x_weighted, marginal_weight, t, tau, topo):
         jac[theta_idx] += np.sum( coef[:,:,None] * dY_dtheta, axis=(0,1))
     return - jac
 
-def get_logL(X,theta,t,tau,topo):
+def get_logL(X,theta,t,tau,topo,params):
     L=len(topo)
     m=len(t)
     p=len(theta)
@@ -319,7 +323,7 @@ def get_logL(X,theta,t,tau,topo):
     return logL
 
 
-def update_theta_j(theta0, x, Q, t, tau, topo, restrictions=None, bnd=10000, bnd_beta=1000, miter=1000):
+def update_theta_j(theta0, x, Q, t, tau, topo, params, restrictions=None, bnd=10000, bnd_beta=1000, miter=1000):
     """
     with jac
 

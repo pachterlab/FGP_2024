@@ -30,6 +30,9 @@ class Trajectory:
     """
 
     def __init__(self, topo, tau, model, restrictions={}, verbose=0):
+        """
+        set model and global parameters
+        """
         self.topo=topo
         self.tau=tau
         self.L=len(topo)
@@ -44,7 +47,7 @@ class Trajectory:
         #tempmod = import_module(".models."+model,"RADOM")
         self.guess_theta = tempmod.guess_theta
         self.check_params = tempmod.check_params
-        self.get_Y = tempmod.get_Y
+        self.get_Y_hat = tempmod.get_Y
         self.get_logL =  tempmod.get_logL
         self.update_theta_j = tempmod.update_theta_j
         del tempmod 
@@ -424,16 +427,26 @@ class Trajectory:
 
         Parameters
         ----------
+        X : TYPE
+            DESCRIPTION.
         Q : TYPE, optional
             DESCRIPTION. The default is None.
         theta : TYPE, optional
             DESCRIPTION. The default is None.
-        m : TYPE
-            DESCRIPTION.
+        prior : TYPE, optional
+            DESCRIPTION. The default is None.
+        params : TYPE, optional
+            DESCRIPTION. The default is {}.
+        model_restrictions : TYPE, optional
+            DESCRIPTION. The default is None.
+        m : TYPE, optional
+            DESCRIPTION. The default is 100.
         n_init : TYPE, optional
-            DESCRIPTION. The default is 3.
-        epoch : TYPE, optional
             DESCRIPTION. The default is 10.
+        perm_theta : TYPE, optional
+            DESCRIPTION. The default is False.
+        epoch : TYPE, optional
+            DESCRIPTION. The default is 100.
         tol : TYPE, optional
             DESCRIPTION. The default is 1e-4.
         parallel : TYPE, optional
@@ -445,7 +458,8 @@ class Trajectory:
 
         Returns
         -------
-        None.
+        TYPE
+            DESCRIPTION.
 
         """
         

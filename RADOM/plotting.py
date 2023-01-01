@@ -1,12 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import cmasher as cmr
-import matplotlib.colors as pltc
 
-cmap_Q = cmr.get_sub_cmap('Greys', 0.1, 1)
+cmap_Q = 'Greys'
 #cmap_t = cmr.get_sub_cmap('YlGnBu', 0.2, 1)
-cmap_t = cmr.get_sub_cmap('Blues', 0.2, 0.8)
-cmap_ts = [cmr.get_sub_cmap('Blues', 0.2, 0.8),cmr.get_sub_cmap('Reds', 0.2, 0.8),cmr.get_sub_cmap('Purples', 0.2, 0.8),cmr.get_sub_cmap('Greens', 0.2, 0.8)]
+cmap_t = 'Blues'
+cmap_ts = ['Blues', 'Reds','Purples', 'Greens']
 label_font =24
       
 def CCC(y_pred, y_true):
@@ -105,7 +103,7 @@ def plot_theta(theta,theta_hat):
         ax[i+2].plot(1+theta[:,i],1+theta[:,i],color='black');
         ax[i+2].plot(1+theta[:,i],1+theta_hat[:,i],'.',color='tab:red');
         ax[i+2].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,i],theta[:,i]))), horizontalalignment='right', 
-                 verticalalignment='top', transform=ax.transAxes, color="black",fontsize=24);
+                 verticalalignment='top', transform=ax[i+2].transAxes, color="black",fontsize=24);
         ax[i+2].set_title("a"+str(i+1))
         ax[i+2].set_xlabel("true values + 1")
         ax[i+2].set_xscale('log')
@@ -114,7 +112,7 @@ def plot_theta(theta,theta_hat):
     ax[0].plot(1+theta[:,-4],1+theta[:,-4],color='black');
     ax[0].plot(1+theta[:,-4],1+theta_hat[:,-4],'.',color='tab:red');
     ax[0].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,-4],theta[:,-4]))), horizontalalignment='right', 
-                 verticalalignment='top', transform=ax.transAxes, color="black",fontsize=24);
+                 verticalalignment='top', transform=ax[0].transAxes, color="black",fontsize=24);
     ax[0].set_title("u0")
     ax[0].set_ylabel("fitted values + 1")
     ax[0].set_xlabel("true values + 1")
@@ -124,7 +122,7 @@ def plot_theta(theta,theta_hat):
     ax[1].plot(1+theta[:,-3],1+theta[:,-3],color='black');
     ax[1].plot(1+theta[:,-3],1+theta_hat[:,-3],'.',color='tab:red');
     ax[1].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,-3],theta[:,-3]))), horizontalalignment='right', 
-                 verticalalignment='top', transform=ax.transAxes, color="black",fontsize=24);
+                 verticalalignment='top', transform=ax[1].transAxes, color="black",fontsize=24);
     ax[1].set_title("s0")
     ax[1].set_ylabel("fitted values + 1")
     ax[1].set_xlabel("true values + 1")
@@ -134,7 +132,7 @@ def plot_theta(theta,theta_hat):
     ax[-2].plot(theta[:,-2],theta[:,-2],color='black');
     ax[-2].plot(theta[:,-2],theta_hat[:,-2],'.',color='tab:red');
     ax[-2].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,-2],theta[:,-2]))), horizontalalignment='right', 
-                 verticalalignment='top', transform=ax.transAxes, color="black",fontsize=24);
+                 verticalalignment='top', transform=ax[-2].transAxes, color="black",fontsize=24);
     ax[-2].set_title("log beta");
     ax[-2].set_xlabel("true values");
     ax[-2].set_xscale('log')
@@ -144,7 +142,7 @@ def plot_theta(theta,theta_hat):
     ax[-1].plot(theta[:,-1],theta[:,-1],color='black');
     ax[-1].plot(theta[:,-1],theta_hat[:,-1],'.',color='tab:red');
     ax[-1].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,-1],theta[:,-1]))), horizontalalignment='right', 
-                 verticalalignment='top', transform=ax.transAxes, color="black",fontsize=24);
+                 verticalalignment='top', transform=ax[-2].transAxes, color="black",fontsize=24);
     ax[-1].set_title("log gamma");
     ax[-1].set_xlabel("true values");
     ax[-1].set_xscale('log')
@@ -240,7 +238,7 @@ def plot_y(traj,idx=np.arange(10),gene_name=None,cell_colors=None):
             theta_l_hat = np.concatenate((theta_hat[:,traj.topo[l]], theta_hat[:,-3:]), axis=1)
         else:
             print("update plot_phase to include", traj.model)
-        Y_hat[l] = traj.get_Y(theta_l_hat,t,tau) # m*p*2
+        Y_hat[l] = traj.get_Y_hat(theta_l_hat,t,tau) # m*p*2
         y_hat = Y_hat[l]
         if len(idx)==1:
             i=idx[0]
@@ -284,13 +282,13 @@ def plot_phase(traj,idx=np.arange(10),gene_name=None,cell_colors=None):
                          
     for l in range(L):
         t=np.linspace(traj.tau[0],traj.tau[-1],100*traj.m)
-        if traj.model == "two_species":
+        if traj.model == "two_species" or "two_species_rd":
             theta_l_hat = np.concatenate((theta_hat[:,traj.topo[l]], theta_hat[:,-4:]), axis=1)
-        elif traj.model == "two_species_ss":
+        elif traj.model == "two_species_ss" or "two_species_ss_rd":
             theta_l_hat = np.concatenate((theta_hat[:,traj.topo[l]], theta_hat[:,-3:]), axis=1)
         else:
             print("update plot_phase to include", traj.model)
-        y_hat = traj.get_Y(theta_l_hat,t,tau) # m*p*2
+        y_hat = traj.get_Y_hat(theta_l_hat,t,tau) # m*p*2
         if len(idx)==1:
             i=idx[0]
             ax.scatter(y_hat[:,i,0],y_hat[:,i,1],c=t,cmap=cmap_ts[l]);

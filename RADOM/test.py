@@ -23,9 +23,9 @@ if __name__ == '__main__':
         ax[i].set_title(j)
        
     ##### fit with correct Q0 #####
-    traj = Trajectory(topo, tau, model="two_species_ss",verbose=1)
+    traj = Trajectory(topo, tau, model="two_species_ss_rd",verbose=1)
     L = len(topo)
-    resol = 100
+    resol = 10
     m = n//resol
     Q0 = np.zeros((L*n,L,m))
     for l in range(L):
@@ -33,13 +33,14 @@ if __name__ == '__main__':
             Q0[i+n*l,l,i//resol] = 1
     #Q0 = np.random.uniform(0,1,size=Q0.shape)
     Q0 /= Q0.sum(axis=(-2,-1),keepdims=True)
-    traj = traj.fit(X, n_init=10, epoch=10)#, parallel=True, n_threads=4)
+    r = X.mean(axis=(1,2))/X.mean()
+    traj = traj.fit(X, Q=Q0, params={'r':r}, n_init=10, epoch=10)#, parallel=True, n_threads=4)
     
-    plt.plot( [traj.elbos[i][-1] for i in range(len(traj.elbos))],'.')
+    #plt.plot( [traj.elbos[i][-1] for i in range(len(traj.elbos))],'.')
     plot_theta(theta,traj.theta)
-    plot_t(traj.Q,t=t)
+    plot_t(traj,t=t)
     plot_phase(traj)
-    
+    """
     for i in range(18):
     #    #plot_theta(theta,traj.theta_hist[i])
         plot_t(traj.Qs[i], l=0, t=t)
@@ -100,7 +101,6 @@ if __name__ == '__main__':
     
     
     ##### fit #####
-    """
     traj = Trajectory(topo, tau, verbose=1)
     Q, lower_bound = traj.fit(X, m=100, epoch=10, parallel=True, n_threads=4)
     plot_theta(theta,traj.theta)
