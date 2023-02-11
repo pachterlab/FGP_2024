@@ -1,10 +1,16 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import re
+from sklearn.neighbors import NearestNeighbors
+#import cmasher as cmr
 
 cmap_Q = 'Greys'
-#cmap_t = cmr.get_sub_cmap('YlGnBu', 0.2, 1)
 cmap_t = 'Blues'
-cmap_ts = ['Blues', 'Reds','Purples', 'Greens']
+cmap_ts = ['Blues', 'Reds', 'Purples', 'Greens']
+
+#cmap_Q = cmr.get_sub_cmap('Greys', 0.2, 1)
+#cmap_t = cmr.get_sub_cmap('Blues', 0.2, 1)
+#cmap_ts = [cmr.get_sub_cmap('Blues', 0.2, 1), cmr.get_sub_cmap('Reds', 0.2, 1),cmr.get_sub_cmap('Purples', 0.2, 1), cmr.get_sub_cmap('Greens', 0.2, 1)]
 label_font =24
       
 def CCC(y_pred, y_true):
@@ -29,8 +35,35 @@ def CCC(y_pred, y_true):
     
     return numerator / denominator
 
-def plot_t(traj,l=0,ax=None,t=None,order_cells=False):
-    t_hat=traj.Q[:,l]@traj.t
+def getNeighbors(embed, n_neigh=100, p=1):
+    """Get indices of nearest neighbors in embedding (shape n_samples,n_features)"""
+    nbrs = NearestNeighbors(n_neighbors=n_neigh, p=p).fit(embed.reshape((-1,1)))
+    distances, indices = nbrs.kneighbors(embed)
+    return indices
+
+def getJaccard(x1, x2, n_neigh=100):
+    '''
+    Get jaccard distance between embeddings
+    
+    Parameters
+    ----------
+    
+    Returns
+    -------
+    '''
+    embed1_neighbor = getNeighbors(x1.reshape(-1, 1),n_neigh)
+    embed2_neighbor = getNeighbors(x2.reshape(-1, 1),n_neigh)
+    frac = [0]*embed1_neighbor.shape[0]
+    for i in range(embed1_neighbor.shape[0]):
+        inter = set(embed1_neighbor[i,:]).intersection(embed2_neighbor[i,:])
+        union = set(embed1_neighbor[i,:]).union(embed2_neighbor[i,:])
+        frac[i] = 1-len(inter)/len(union)
+    return frac
+
+def plot_t(traj,Q=None,l=0,ax=None,t=None,order_cells=False):
+    if Q is None:
+        Q = traj.Q
+    t_hat=Q[:,l]@traj.t
     if ax is None:
         fig, ax = plt.subplots(1,1)
     if t is not None:
@@ -38,7 +71,7 @@ def plot_t(traj,l=0,ax=None,t=None,order_cells=False):
             order=np.argsort(t)
         else:
             order=np.arange(len(t))
-        im = ax.imshow(traj.Q[order,l,:],aspect="auto",cmap=cmap_Q);
+        im = ax.imshow(Q[order,l,:],aspect="auto",cmap=cmap_Q);
         ax.text(0.9, 0.9, "CCC="+str(np.around(CCC(t_hat,t))), horizontalalignment='right', 
                  verticalalignment='top', transform=ax.transAxes, color="black",fontsize=24);
     else:
@@ -46,108 +79,57 @@ def plot_t(traj,l=0,ax=None,t=None,order_cells=False):
             order=np.argsort(t_hat)
         else:
             order=np.arange(len(t_hat))
-        im = ax.imshow(traj.Q[order,l,:],aspect="auto",cmap=cmap_Q);
+        im = ax.imshow(Q[order,l,:],aspect="auto",cmap=cmap_Q);
         
-    plt.colorbar(im) # adding the colobar on the right
+    #plt.colorbar(im) # adding the colobar on the right
     return ax
 
-def plot_theta_ss(theta,theta_hat,dot_color='grey'):
-    K=np.shape(theta)[1]-3
-    fig, ax = plt.subplots(1,K+3,figsize=(4*(K+3),3.5))
+def plot_theta(theta,theta_hat,dot_color='grey'):
+    n_theta = theta.shape[1]
+    assert theta_hat.shape[1] == n_theta
+    fig, ax = plt.subplots(1,n_theta,figsize=(6*n_theta,5))
 
-    for i in range(K):
-        ax[i+1].plot(theta[:,i],theta[:,i],color='black');
-        ax[i+1].plot(theta[:,i],theta_hat[:,i],'.',color=dot_color);
-        ax[i+1].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,i],theta[:,i]))), horizontalalignment='right', 
-                 verticalalignment='top', transform=ax.transAxes, color="black",fontsize=24);
-        ax[i+1].set_title("α"+str(i+1), fontsize = label_font)
-        ax[i+1].set_xscale('log')
-        ax[i+1].set_yscale('log')
+    for i in range(n_theta):
+        ax[i].plot(theta[:,i],theta[:,i],color='black');
+        ax[i].plot(theta[:,i],theta_hat[:,i],'.',color='tab:red');
+        ax[i].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,i],theta[:,i]),2)), horizontalalignment='right', 
+                 verticalalignment='top', transform=ax[i].transAxes, color="black",fontsize=24);
+        ax[i].set_title("a"+str(i+1))
+        ax[i].set_xlabel("true values")
+        ax[i].set_xscale('log')
+        ax[i].set_yscale('log')
 
-    ax[0].plot(theta[:,-3],theta[:,-3],color='black');
-    ax[0].plot(theta[:,-3],theta_hat[:,-3],'.',color=dot_color);
-    ax[0].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,-3],theta[:,-3]))), horizontalalignment='right', 
-                 verticalalignment='top', transform=ax.transAxes, color="black",fontsize=24);
-    ax[0].set_title("u0", fontsize = label_font)
-    ax[0].set_xscale('log')
-    ax[0].set_yscale('log')
     
-    ax[-2].plot(theta[:,-2],theta[:,-2],color='black');
-    ax[-2].plot(theta[:,-2],theta_hat[:,-2],'.',color=dot_color);
-    ax[-2].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,-2],theta[:,-2]))), horizontalalignment='right', 
-                 verticalalignment='top', transform=ax.transAxes, color="black",fontsize=24);
-    ax[-2].set_title("β", fontsize = label_font);
-    ax[-2].set_xscale('log')
-    ax[-2].set_yscale('log')
+    ax[-2].set_title("beta");
+    ax[-1].set_title("gamma");
     
-
-    ax[-1].plot(theta[:,-1],theta[:,-1],color='black');
-    ax[-1].plot(theta[:,-1],theta_hat[:,-1],'.',color=dot_color);
-    ax[-1].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,-1],theta[:,-1]))), horizontalalignment='right', 
-                 verticalalignment='top', transform=ax.transAxes, color="black",fontsize=24);
-    ax[-1].set_title("γ",fontsize = label_font);
-    ax[-1].set_xscale('log')
-    ax[-1].set_yscale('log')
+    plt.tight_layout()
     
     #fig.supxlabel("true values", fontsize = label_font);
     #fig.supylabel("estimates", fontsize = label_font)
     plt.tight_layout()
     
-    return fig
+    return fig,ax
     
-def plot_theta(theta,theta_hat):
-    K=np.shape(theta)[1]-4
-    fig, ax = plt.subplots(1,K+4,figsize=(6*(K+4),4))
+def plot_theta_1(theta,theta_hat):
+    n_theta = theta.shape[1]
+    assert theta_hat.shape[1] == n_theta
+    fig, ax = plt.subplots(1,n_theta,figsize=(6*n_theta,5))
 
-    for i in range(K):
-        ax[i+2].plot(1+theta[:,i],1+theta[:,i],color='black');
-        ax[i+2].plot(1+theta[:,i],1+theta_hat[:,i],'.',color='tab:red');
-        ax[i+2].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,i],theta[:,i]))), horizontalalignment='right', 
-                 verticalalignment='top', transform=ax[i+2].transAxes, color="black",fontsize=24);
-        ax[i+2].set_title("a"+str(i+1))
-        ax[i+2].set_xlabel("true values + 1")
-        ax[i+2].set_xscale('log')
-        ax[i+2].set_yscale('log')
+    for i in range(n_theta):
+        ax[i].plot(1+theta[:,i],1+theta[:,i],color='black');
+        ax[i].plot(1+theta[:,i],1+theta_hat[:,i],'.',color='tab:red');
+        ax[i].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,i],theta[:,i]),1)), horizontalalignment='right', 
+                 verticalalignment='top', transform=ax[i].transAxes, color="black",fontsize=24);
+        ax[i].set_title("a"+str(i+1))
+        ax[i].set_xlabel("true values + 1")
+        ax[i].set_xscale('log')
+        ax[i].set_yscale('log')
 
-    ax[0].plot(1+theta[:,-4],1+theta[:,-4],color='black');
-    ax[0].plot(1+theta[:,-4],1+theta_hat[:,-4],'.',color='tab:red');
-    ax[0].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,-4],theta[:,-4]))), horizontalalignment='right', 
-                 verticalalignment='top', transform=ax[0].transAxes, color="black",fontsize=24);
-    ax[0].set_title("u0")
-    ax[0].set_ylabel("fitted values + 1")
-    ax[0].set_xlabel("true values + 1")
-    ax[0].set_xscale('log')
-    ax[0].set_yscale('log')
-
-    ax[1].plot(1+theta[:,-3],1+theta[:,-3],color='black');
-    ax[1].plot(1+theta[:,-3],1+theta_hat[:,-3],'.',color='tab:red');
-    ax[1].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,-3],theta[:,-3]))), horizontalalignment='right', 
-                 verticalalignment='top', transform=ax[1].transAxes, color="black",fontsize=24);
-    ax[1].set_title("s0")
-    ax[1].set_ylabel("fitted values + 1")
-    ax[1].set_xlabel("true values + 1")
-    ax[1].set_xscale('log')
-    ax[1].set_yscale('log')
     
-    ax[-2].plot(theta[:,-2],theta[:,-2],color='black');
-    ax[-2].plot(theta[:,-2],theta_hat[:,-2],'.',color='tab:red');
-    ax[-2].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,-2],theta[:,-2]))), horizontalalignment='right', 
-                 verticalalignment='top', transform=ax[-2].transAxes, color="black",fontsize=24);
-    ax[-2].set_title("log beta");
-    ax[-2].set_xlabel("true values");
-    ax[-2].set_xscale('log')
-    ax[-2].set_yscale('log')
+    ax[-2].set_title("beta");
+    ax[-1].set_title("gamma");
     
-
-    ax[-1].plot(theta[:,-1],theta[:,-1],color='black');
-    ax[-1].plot(theta[:,-1],theta_hat[:,-1],'.',color='tab:red');
-    ax[-1].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,-1],theta[:,-1]))), horizontalalignment='right', 
-                 verticalalignment='top', transform=ax[-2].transAxes, color="black",fontsize=24);
-    ax[-1].set_title("log gamma");
-    ax[-1].set_xlabel("true values");
-    ax[-1].set_xscale('log')
-    ax[-1].set_yscale('log')
-  
     plt.tight_layout()
     
 
@@ -166,36 +148,19 @@ def plot_theta_hat(theta_hat,K,gene_list=None):
     ax[4].set_title("log beta");
     ax[5].set_title("log gamma");
 
-
-
-def plot_theta_diff(theta_hat,K,gene_list=None):
-    if gene_list is None:
-        gene_list = np.arange(len(theta_hat))
-    fig, ax = plt.subplots(K+4,1,figsize=(12,4*(K+4)))
-    ax[0].scatter(np.array(gene_list), theta_hat[:,0]);
-    ax[-3].scatter(np.array(gene_list), theta_hat[:,-3]);
-    for i in range(1,K+1):
-        ax[i].scatter(np.array(gene_list), theta_hat[:,i]-theta_hat[:,0]);
-        
-    for i in range(-2,0):
-        ax[i].scatter(np.array(gene_list), theta_hat[:,i]);
-
-    ax[0].set_title("a1");
-    ax[1].set_title("a2 - a1");
-    ax[2].set_title("u0 - a1");
-    ax[3].set_title("s0");
-    ax[4].set_title("beta");
-    ax[5].set_title("gamma");
-
           
-def plot_y(traj,idx=np.arange(10),gene_name=None,cell_colors=None):
-    X,weight = traj.X, traj.Q
+def plot_y(traj,X=None,idx=np.arange(10),gene_name=None,cell_colors=None):
+    if X is None:
+        X = traj.X
+    weight = traj.Q
+        
     n,p,c=X.shape
     theta_hat = traj.theta.copy()
     tau=traj.tau
     n,L,m=np.shape(weight)
-    h=np.linspace(tau[0],tau[-1],m)
-    t_hat=np.sum(weight[:,:,:]*h[None,None,:],axis=(1,2))
+    t_hat=np.sum(weight[:,:,:]*traj.t[None,None,:],axis=(1,2))
+    t = np.linspace(tau[0], tau[-1],1001)
+    
     if gene_name is None:
         gene_name = np.arange(p)
     if cell_colors is None:
@@ -229,16 +194,9 @@ def plot_y(traj,idx=np.arange(10),gene_name=None,cell_colors=None):
                     ax[ic,i].scatter(t_hat,X[:,j,ic]+np.random.normal(0,0.1,n),c=cell_colors,s=10);
     
     ## plot Y
-    Y_hat = np.zeros((L,10000,p,2))
-    for l in range(L):
-        t=np.linspace(tau[0],tau[-1],10000)
-        if traj.model == "two_species":
-            theta_l_hat = np.concatenate((theta_hat[:,traj.topo[l]], theta_hat[:,-4:]), axis=1)
-        elif traj.model == "two_species_ss":
-            theta_l_hat = np.concatenate((theta_hat[:,traj.topo[l]], theta_hat[:,-3:]), axis=1)
-        else:
-            print("update plot_phase to include", traj.model)
-        Y_hat[l] = traj.get_Y_hat(theta_l_hat,t,tau) # m*p*2
+    Y_hat = traj.get_Y_hat(theta_hat,t,tau,traj.topo,traj.params) #(L,len(t),p,2)                                                                 
+       
+    for l in range(L):                                                                                                        
         y_hat = Y_hat[l]
         if len(idx)==1:
             i=idx[0]
@@ -256,14 +214,16 @@ def plot_y(traj,idx=np.arange(10),gene_name=None,cell_colors=None):
                     for ic in range(c):
                         ax[ic,i].scatter(t,y_hat[:,j,ic],c=t,cmap=cmap_ts[l],alpha=0.5);
 
-def plot_phase(traj,idx=np.arange(10),gene_name=None,cell_colors=None):
-    X,weight = traj.X, traj.Q
+def plot_phase(traj,X=None,idx=np.arange(10),gene_name=None,cell_colors=None):
+    if X is None:
+        X = traj.X
+    weight = traj.Q
     theta_hat = traj.theta.copy()
     tau=traj.tau
     n,L,m=np.shape(weight)
     p=np.shape(traj.theta)[0]
-    h=traj.t
-    t_hat=np.sum(weight[:,:,:]*h[None,None,:],axis=(1,2))
+    #t_hat=np.sum(weight[:,:,:]*traj.t[None,None,:],axis=(1,2))
+    t = np.linspace(tau[0], tau[-1],1001)
     if gene_name is None:
         gene_name = np.arange(p)
     if cell_colors is None:
@@ -279,16 +239,9 @@ def plot_phase(traj,idx=np.arange(10),gene_name=None,cell_colors=None):
             ax[i].scatter(X[:,j,0]+np.random.normal(0,0.1,n),X[:,j,1]+np.random.normal(0,0.1,n),c=cell_colors,s=10);
             ax[i].set_title(gene_name[j])
         
-                         
-    for l in range(L):
-        t=np.linspace(traj.tau[0],traj.tau[-1],100*traj.m)
-        if traj.model == "two_species" or "two_species_rd":
-            theta_l_hat = np.concatenate((theta_hat[:,traj.topo[l]], theta_hat[:,-4:]), axis=1)
-        elif traj.model == "two_species_ss" or "two_species_ss_rd":
-            theta_l_hat = np.concatenate((theta_hat[:,traj.topo[l]], theta_hat[:,-3:]), axis=1)
-        else:
-            print("update plot_phase to include", traj.model)
-        y_hat = traj.get_Y_hat(theta_l_hat,t,tau) # m*p*2
+    Y_hat = traj.get_Y_hat(theta_hat,t,tau,traj.topo,traj.params) #(L,len(t),p,2)                                                                 
+    for l in range(L):                                                               
+        y_hat = Y_hat[l]
         if len(idx)==1:
             i=idx[0]
             ax.scatter(y_hat[:,i,0],y_hat[:,i,1],c=t,cmap=cmap_ts[l]);
@@ -296,4 +249,4 @@ def plot_phase(traj,idx=np.arange(10),gene_name=None,cell_colors=None):
         else:
             for i,j in enumerate(idx):
                 ax[i].scatter(y_hat[:,j,0],y_hat[:,j,1],c=t,cmap=cmap_ts[l]);
-                         
+    return fig, ax
