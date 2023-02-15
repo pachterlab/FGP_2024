@@ -62,7 +62,7 @@ class Trajectory:
         return self.theta.copy()
     
     def _initialize_theta(self, X):
-        self.theta=self.guess_theta(X,self.topo)
+        self.theta=self.guess_theta(X,self.topo,self.tau)
         return 
     
     def _initialize_Q(self, n):

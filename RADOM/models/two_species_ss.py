@@ -19,10 +19,11 @@ from scipy.optimize import minimize
 # global parameters: upper and lower limits for numerical stability
 eps = 1e-10
 
-def check_params(params):
+def check_params(traj):
+    assert len(traj.tau) == len(traj.topo[0])
     return
 
-def guess_theta(X,topo):
+def guess_theta(X,topo,tau):
     n_states=len(set(topo.flatten()))
     p = X.shape[1]
     theta = np.zeros((p,n_states+2))
@@ -30,7 +31,6 @@ def guess_theta(X,topo):
     theta[:,-2] = np.sqrt(np.mean(X[:,:,1],axis=0)/(np.mean(X[:,:,0],axis=0)+eps))
     theta[:,-1] = np.sqrt(np.mean(X[:,:,0],axis=0)/(np.mean(X[:,:,1],axis=0)+eps))
     return theta
-
 
 def get_y(theta, t, tau):
     # theta: a_1, ..., a_K, u_0, s_0, beta, gamma
@@ -157,9 +157,7 @@ def get_Y(theta, t, tau):
     # return m * p * 2
     p = len(theta)
     K = len(tau)-1 # number of states
-    if np.shape(theta)[1]!=K+3:
-        print(np.shape(theta)[1], K+3)
-        raise TypeError("wrong parameters lengths")
+    assert np.shape(theta)[1]==K+3
     a = theta[:,1:(K+1)].T
     beta = theta[:,-2].reshape((1,-1))
     gamma = theta[:,-1].reshape((1,-1))
@@ -233,7 +231,7 @@ def neglogL_jac(theta, x_weighted, marginal_weight, t, tau, topo):
         jac[theta_idx] += np.sum( coef[:,:,None] * dY_dtheta, axis=(0,1))
     return - jac
 
-def get_logL(X,theta,t,tau,topo,params):
+def get_Y_hat(theta,t,tau,topo,params):
     L=len(topo)
     m=len(t)
     p=len(theta)
@@ -241,7 +239,10 @@ def get_logL(X,theta,t,tau,topo,params):
     for l in range(L):
         theta_l = np.concatenate((theta[:,topo[l]], theta[:,-2:]), axis=1)
         Y[l] = get_Y(theta_l,t,tau) # m*p*2
-        
+    return Y
+
+def get_logL(X,theta,t,tau,topo,params):
+    Y = get_Y_hat(theta,t,tau,topo,params)
     logL = np.tensordot(X, np.log(eps + Y), axes=([-2,-1],[-2,-1])) # logL:n*L*m
     logL -= np.sum(Y,axis=(-2,-1))
     #logX = np.sum(gammaln(X+1),axis=(-2,-1),keepdims=True)
@@ -249,7 +250,7 @@ def get_logL(X,theta,t,tau,topo,params):
     return logL
 
 
-def update_theta_j(theta0, x, Q, t, tau, topo, params, restrictions=None, bnd=10000, bnd_beta=10000, miter=1000):
+def update_theta_j(theta0, x, Q, t, tau, topo, params=None, restrictions=None, bnd=10000, bnd_beta=10000, miter=1000):
     """
     with jac
 
@@ -283,15 +284,27 @@ def update_theta_j(theta0, x, Q, t, tau, topo, params, restrictions=None, bnd=10
     n,L,m = Q.shape
     x_weighted = np.zeros((L,m,2))
     marginal_weight = np.zeros((L,m,1))
-    for l in range(len(topo)):
-        weight_l = Q[:,l,:] #n*m
-        x_weighted[l] = weight_l.T@x # m*2 = m*n @ n*2
-        marginal_weight[l] =  weight_l.sum(axis=0)[:,None] # m*1
-       
-    theta00 = theta0.copy()
-    if np.max(theta00[:-2]) > np.maximum( np.max(x[:,0]) , np.max(x[:,1]) * theta00[-1] / theta00[-2]):
-        theta00[:-2] = np.sqrt( np.mean(x[:,0]) * np.mean(x[:,1]) * theta00[-1] / theta00[-2])
     
+    if 'r' in params:
+        r = params['r'] # n
+        for l in range(len(topo)):
+            weight_l = Q[:,l,:]/n #n*m
+            x_weighted[l] = weight_l.T@x # m*2 = m*n @ n*2
+            marginal_weight[l] =  (weight_l*r[:,None]).sum(axis=0)[:,None] # m*1
+    else:
+        for l in range(len(topo)):
+            weight_l = Q[:,l,:]/n #n*m
+            x_weighted[l] = weight_l.T@x # m*2 = m*n @ n*2
+            marginal_weight[l] = weight_l.sum(axis=0)[:,None] # m*1
+    
+    n_states=len(set(topo.flatten()))
+    theta00 = theta0.copy()
+    if np.max(theta00[:n_states]) > np.maximum( np.max(x[:,0]) , np.max(x[:,1]) * theta00[-1] / theta00[-2]):
+        theta00[:n_states] = np.sqrt( np.mean(x[:,0]) * np.mean(x[:,1]) * theta00[-1] / theta00[-2])
+    if np.min(np.abs(np.log10(theta00[-2:]))) > 2:
+        theta00[-2] = np.cbrt(np.mean(x[:,1],axis=0)/(np.mean(x[:,0],axis=0)+eps))
+        theta00[-1] = np.cbrt(np.mean(x[:,0],axis=0)/(np.mean(x[:,1],axis=0)+eps))
+        
     if restrictions==None:
         res = update_theta_j_unrestricted(theta00, x_weighted, marginal_weight, t, tau, topo, bnd, bnd_beta, miter)
     else:
@@ -341,7 +354,7 @@ def update_theta_j_restricted(theta0, x_weighted, marginal_weight, t, tau, topo,
     if len(redundant) >= len(theta0) - 3:
         theta = np.ones(len(theta0))*np.sum(x_weighted[:,0])
         theta[-2] = 1
-        theta[-1] = np.mean(x_weighted[:,0])/np.mean(x_weighted[:,1])
+        theta[-1] = np.sum(x_weighted[:,0])/np.sum(x_weighted[:,1])
         
     else:
         redundant_mask = np.zeros(len(theta0), dtype=bool)
@@ -349,7 +362,7 @@ def update_theta_j_restricted(theta0, x_weighted, marginal_weight, t, tau, topo,
         custom_theta0 = theta0[~redundant_mask]  
         bound = [[0,bnd]]*len(custom_theta0)
         bound[-2:] = [[1/bnd_beta,bnd_beta]]*2
-             
+        
         def custom_neglogL(custom_theta, x_weighted, marginal_weight, t, tau, topo):
             theta = np.zeros(len(theta0))
             theta[~redundant_mask] = custom_theta
@@ -360,63 +373,8 @@ def update_theta_j_restricted(theta0, x_weighted, marginal_weight, t, tau, topo,
        
         res = minimize(fun=custom_neglogL, x0=custom_theta0, args=(x_weighted,marginal_weight,t,tau,topo), method = 'L-BFGS-B' , jac = None, bounds=bound, options={'maxiter': miter,'disp': False}) 
         
-        
         theta = np.zeros(len(theta0))
         theta[~redundant_mask] = res.x
         theta[redundant] = theta[blanket]
             
     return theta
-
-
-
-#%% Test
-if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-    from scipy.optimize import check_grad, approx_fprime
-    np.random.seed(2022)
-    topo = np.array([[0]])
-    tau=(0,1)
-    n = 100
-    p = 1
-    K=len(tau)-1
-    t=np.linspace(tau[0], tau[-1], n)
-   
-    theta = np.array([[10.0,0,2.5,1.9]])
-    theta0 = np.array([[1.0,5,2.5,1.9]])
-    
-    
-    Y = get_y(theta[0], t, tau)
-    plt.figure()
-    plt.scatter(Y[:,0],Y[:,1],c=t);
-    
-    X = np.random.poisson(Y)
-    plt.scatter(X[:,0],X[:,1],c=t);
-    x = X
-    
-    L = len(topo)
-    resol = 1
-    m = n//resol
-    Q = np.zeros((L*n,L,m))
-    for l in range(L):
-        for i in range(n):
-            Q[i+n*l,l,i//resol] = 1
-    
-    _,L,m = Q.shape
-    t_grids=np.linspace(tau[0], tau[-1], m)
-    x_weighted = np.zeros((L,m,2))
-    marginal_weight = np.zeros((L,m,1))
-    for l in range(len(topo)):
-        weight_l = Q[:,l,:] #n*m
-        x_weighted[l] = weight_l.T@X[:,4] # m*2
-        marginal_weight[l] =  weight_l.sum(axis=0)[:,None] # m*1
-    plt.imshow(Q[:,0],aspect='auto')
-   
-    check_grad(neglogL, neglogL_jac, theta0[0], x_weighted, marginal_weight, t_grids, tau, topo)
-    approx_fprime(theta[0], neglogL, 1e-10, x_weighted, marginal_weight, t_grids, tau, topo)
-    neglogL_jac(theta[0], x_weighted, marginal_weight, t_grids, tau, topo)
-    
-    plt.scatter(x_weighted[0,:,0],x_weighted[0,:,1],c=t_grids);
-    plt.scatter(t_grids,marginal_weight);
-    
-    
-    
