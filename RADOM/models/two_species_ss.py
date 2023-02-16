@@ -202,26 +202,34 @@ def get_Y(theta, t, tau):
 
 
 
-def neglogL(theta, x_weighted, marginal_weight, t, tau, topo):
+def neglogL(theta, x_weighted, marginal_weight, t, tau, topo, lambda_a=0):
     # theta: length K+4
     # x: n*2
     # Q: n*L*m
     # t: len m
     # tau: len K+1
     logL = 0
+    n_states=len(set(topo.flatten()))
+    parents = np.zeros(n_states,dtype=int)
     for l in range(len(topo)):
         theta_l = np.concatenate((theta[topo[l]], theta[-2:]))
         Y = get_y(theta_l,t,tau) # m*2
         logL += np.sum( x_weighted[l] * np.log(eps + Y) - marginal_weight[l]*Y )
-    return - logL
+        parents[topo[l][1:]] = topo[l][:-1]
+    penalty_a = np.sum((theta[1:n_states]-theta[parents[1:n_states]])**2)
+    return - logL + lambda_a * penalty_a
 
 
-def neglogL_jac(theta, x_weighted, marginal_weight, t, tau, topo):
+
+def neglogL_jac(theta, x_weighted, marginal_weight, t, tau, topo, lambda_a=0):
     # theta: length K+4
     # x: n*2
     # Q: n*L*m
     # t: len m
     # tau: len K+1
+    n_states=len(set(topo.flatten()))
+    parents = np.zeros(n_states,dtype=int)
+    penalty_a_jac = np.zeros_like(theta)
     jac = np.zeros_like(theta)
     for l in range(len(topo)):
         theta_idx = np.append(topo[l],[-2,-1])
@@ -229,7 +237,10 @@ def neglogL_jac(theta, x_weighted, marginal_weight, t, tau, topo):
         Y, dY_dtheta = get_y_jac(theta_l,t,tau) # m*2*len(theta)
         coef =  x_weighted[l] / (eps + Y) - marginal_weight[l]
         jac[theta_idx] += np.sum( coef[:,:,None] * dY_dtheta, axis=(0,1))
-    return - jac
+        parents[topo[l][1:]] = topo[l][:-1]
+    penalty_a_jac[1:n_states] = 2*(theta[1:n_states]-theta[parents[1:n_states]])
+    penalty_a_jac[parents[1:n_states]] += 2*(theta[parents[1:n_states]] - theta[1:n_states])
+    return - jac + lambda_a * penalty_a_jac
 
 def get_Y_hat(theta,t,tau,topo,params):
     L=len(topo)
@@ -305,6 +316,20 @@ def update_theta_j(theta0, x, Q, t, tau, topo, params=None, restrictions=None, b
         theta00[-2] = np.cbrt(np.mean(x[:,1],axis=0)/(np.mean(x[:,0],axis=0)+eps))
         theta00[-1] = np.cbrt(np.mean(x[:,0],axis=0)/(np.mean(x[:,1],axis=0)+eps))
         
+<<<<<<< HEAD
+    if "lambda_a" in params:
+        lambda_a = params['lambda_a']
+    else:
+        lambda_a = 0
+        
+    if restrictions==None:
+        res = update_theta_j_unrestricted(theta00, x_weighted, marginal_weight, t, tau, topo, lambda_a, bnd, bnd_beta, miter)
+    else:
+        res = update_theta_j_restricted(theta00, x_weighted, marginal_weight, t, tau, topo, restrictions, lambda_a, bnd, bnd_beta, miter)
+    return res
+
+def update_theta_j_unrestricted(theta0, x_weighted, marginal_weight, t, tau, topo, lambda_a, bnd=10000, bnd_beta=1000, miter=10000):
+=======
     if restrictions==None:
         res = update_theta_j_unrestricted(theta00, x_weighted, marginal_weight, t, tau, topo, bnd, bnd_beta, miter)
     else:
@@ -312,6 +337,7 @@ def update_theta_j(theta0, x, Q, t, tau, topo, params=None, restrictions=None, b
     return res
 
 def update_theta_j_unrestricted(theta0, x_weighted, marginal_weight, t, tau, topo, bnd=10000, bnd_beta=1000, miter=10000):
+>>>>>>> da9933dab637c4a5af8142839560bc87f60d4348
     """
     with jac
 
@@ -345,10 +371,17 @@ def update_theta_j_unrestricted(theta0, x_weighted, marginal_weight, t, tau, top
     bound = [[0,bnd]]*len(theta0)
     bound[-2:] = [[1/bnd_beta,bnd_beta]]*2
     
+<<<<<<< HEAD
+    res = minimize(fun=neglogL, x0=theta0, args=(x_weighted,marginal_weight,t,tau,topo,lambda_a), method = 'L-BFGS-B' , jac = neglogL_jac, bounds=bound, options={'maxiter': miter,'disp': False}) 
+    return res.x
+
+def update_theta_j_restricted(theta0, x_weighted, marginal_weight, t, tau, topo, restrictions, lambda_a, bnd=10000, bnd_beta=1000, miter=10000):
+=======
     res = minimize(fun=neglogL, x0=theta0, args=(x_weighted,marginal_weight,t,tau,topo), method = 'L-BFGS-B' , jac = neglogL_jac, bounds=bound, options={'maxiter': miter,'disp': False}) 
     return res.x
 
 def update_theta_j_restricted(theta0, x_weighted, marginal_weight, t, tau, topo, restrictions, bnd=10000, bnd_beta=1000, miter=10000):
+>>>>>>> da9933dab637c4a5af8142839560bc87f60d4348
     # define a new neglogL inside with fewer parameters
     redundant, blanket = restrictions # 1,0 => a[1] = a[0], 0, -3 => a[0] = u_0,
     if len(redundant) >= len(theta0) - 3:
@@ -363,15 +396,23 @@ def update_theta_j_restricted(theta0, x_weighted, marginal_weight, t, tau, topo,
         bound = [[0,bnd]]*len(custom_theta0)
         bound[-2:] = [[1/bnd_beta,bnd_beta]]*2
         
+<<<<<<< HEAD
+        def custom_neglogL(custom_theta, x_weighted, marginal_weight, t, tau, topo, lambda_a):
+=======
         def custom_neglogL(custom_theta, x_weighted, marginal_weight, t, tau, topo):
+>>>>>>> da9933dab637c4a5af8142839560bc87f60d4348
             theta = np.zeros(len(theta0))
             theta[~redundant_mask] = custom_theta
             theta[redundant] = theta[blanket]
                
-            return neglogL(theta, x_weighted, marginal_weight, t, tau, topo)
+            return neglogL(theta, x_weighted, marginal_weight, t, tau, topo, lambda_a)
             
        
+<<<<<<< HEAD
+        res = minimize(fun=custom_neglogL, x0=custom_theta0, args=(x_weighted,marginal_weight,t,tau,topo,lambda_a), method = 'L-BFGS-B' , jac = None, bounds=bound, options={'maxiter': miter,'disp': False}) 
+=======
         res = minimize(fun=custom_neglogL, x0=custom_theta0, args=(x_weighted,marginal_weight,t,tau,topo), method = 'L-BFGS-B' , jac = None, bounds=bound, options={'maxiter': miter,'disp': False}) 
+>>>>>>> da9933dab637c4a5af8142839560bc87f60d4348
         
         theta = np.zeros(len(theta0))
         theta[~redundant_mask] = res.x
