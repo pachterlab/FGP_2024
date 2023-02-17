@@ -432,7 +432,7 @@ class Trajectory:
             
         return [best_Q, elbos]
     
-    def fit(self, X, Q=None, theta=None, prior=None, params={}, model_restrictions=None, m=100, n_init=10, perm_theta = False, epoch=100, beta=1, parallel=False, n_threads=1, seed=42):
+    def fit(self, X, Q=None, theta=None, prior=None, params={}, model_restrictions=None, m=100, n_init=10, perm_theta = False, epoch=100, beta=10, parallel=False, n_threads=1, seed=42):
         """
         
 
@@ -516,7 +516,7 @@ class Trajectory:
             lower bound value
         """
         
-        logL = self.get_logL(X,self.theta,self.t,self.tau,self.topo) # with size (n,self.L,self.m)
+        logL = self.get_logL(X,self.theta,self.t,self.tau,self.topo,self.params) # with size (n,self.L,self.m)
         
         if self.prior is not None:
             logL += np.log(self.prior)
