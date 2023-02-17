@@ -317,7 +317,7 @@ def get_Y_hat(theta,t,tau,topo,params):
         Y[l] = get_Y(theta_l,t,tau) # m*p*2
     return Y
     
-def update_theta_j(theta0, x, Q, t, tau, topo, params, restrictions=None, bnd=1000, bnd_beta=1000, bnd_tau=0.001, miter=1000):
+def update_theta_j(theta0, x, Q, t, tau, topo, params, restrictions=None, bnd=1000, bnd_beta=1000, bnd_tau=0.5, miter=1000):
     """
     with jac
 
@@ -383,7 +383,7 @@ def update_theta_j(theta0, x, Q, t, tau, topo, params, restrictions=None, bnd=10
         lambda_a = 0
         
     if restrictions==None:
-        res = update_theta_j_unrestricted(theta00, x_weighted, marginal_weight, t, tau, topo, lambda_tau, lambda_a, bnd, bnd_beta, bnd_tau, miter)
+        res = update_theta_j_unrestricted_alternative(theta00, x_weighted, marginal_weight, t, tau, topo, lambda_tau, lambda_a, bnd, bnd_beta, bnd_tau, miter)
     else:
         res = update_theta_j_restricted(theta00, x_weighted, marginal_weight, t, tau, topo, restrictions, lambda_tau, lambda_a, bnd, bnd_beta, bnd_tau, miter)
     return res
@@ -434,7 +434,7 @@ def update_theta_j_unrestricted_alternative(theta0, x_weighted, marginal_weight,
         theta_a = theta0.copy()[a_idx]
         theta_tau = theta0.copy()[-K-1:-2]
 
-        for iii in range(1):
+        for iii in range(10):
             res = minimize(fun=neglogL_a, x0=theta_a, args=(theta_tau,x_weighted,marginal_weight,t,tau,topo,lambda_tau,lambda_a), method = 'L-BFGS-B' , jac = neglogL_jac_a, bounds=bound_a, options={'maxiter': miter,'disp': False}) 
             theta_a = res.x
             res = minimize(fun=neglogL_tau, x0=theta_tau, args=(theta_a,x_weighted,marginal_weight,t,tau,topo,lambda_tau,lambda_a), method = 'L-BFGS-B' , jac = neglogL_jac_tau, bounds=bound_tau, options={'maxiter': miter,'disp': False}) 
@@ -527,4 +527,3 @@ def update_theta_j_restricted(theta0, x_weighted, marginal_weight, t, tau, topo,
         theta[redundant] = theta[blanket]
             
     return theta
-

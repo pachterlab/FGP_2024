@@ -384,7 +384,7 @@ def update_theta_j(theta0, x, Q, t, tau, topo, params={}, restrictions=None, bnd
         lambda_a = 0
         
     if restrictions==None:
-        res = update_theta_j_unrestricted(theta00, x_weighted, marginal_weight, t, tau, topo, lambda_tau, lambda_a, bnd, bnd_beta, bnd_tau, miter)
+        res = update_theta_j_unrestricted_alternative(theta00, x_weighted, marginal_weight, t, tau, topo, lambda_tau, lambda_a, bnd, bnd_beta, bnd_tau, miter)
     else:
         res = update_theta_j_restricted(theta00, x_weighted, marginal_weight, t, tau, topo, restrictions, lambda_tau, lambda_a, bnd, bnd_beta, bnd_tau, miter)
     return res
