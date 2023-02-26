@@ -283,29 +283,6 @@ def neglogL_jac_tau(theta_tau, theta_a, x_weighted, marginal_weight, t, tau, top
     K = len(tau)-1
     return neglogL_jac(theta, x_weighted, marginal_weight, t, tau, topo, lam_t, lam_a)[-(K+1):-2]
 
-def get_logL(X,theta,t,tau,topo,params):
-    L=len(topo)
-    m=len(t)
-    p=len(theta)
-    K = len(tau)-1
-    Y = np.zeros((L,m,p,2))
-    for l in range(L):
-        theta_l = np.concatenate((theta[:,topo[l]], theta[:,-(K+1):]), axis=1)
-        Y[l] = get_Y(theta_l,t,tau) # m*p*2
-    
-    if 'r' in params:
-        r = params['r'] # n
-        logL = np.tensordot(X, np.log(eps + Y), axes=([-2,-1],[-2,-1])) # logL:n*L*m
-        logL += (np.log(r)*np.sum(X,axis=(-2,-1)))[:,None,None]
-        logL -= r[:,None,None]*np.sum(Y,axis=(-2,-1))[None,:]
-    else:
-        logL = np.tensordot(X, np.log(eps + Y), axes=([-2,-1],[-2,-1])) # logL:n*L*m
-        logL -= np.sum(Y,axis=(-2,-1))
- 
-    #logX = np.sum(gammaln(X+1),axis=(-2,-1),keepdims=True)
-    #logL -= logX
-    return logL
-
 def get_Y_hat(theta,t,tau,topo,params):
     L=len(topo)
     m=len(t)
@@ -316,6 +293,59 @@ def get_Y_hat(theta,t,tau,topo,params):
         theta_l = np.concatenate((theta[:,topo[l]], theta[:,-(K+1):]), axis=1)
         Y[l] = get_Y(theta_l,t,tau) # m*p*2
     return Y
+
+def get_logL(X,theta,t,tau,topo,params):
+    L=len(topo)
+    m=len(t)
+    p=len(theta)
+    K=len(tau)-1
+    Y = np.zeros((L,m,p,2))
+    for l in range(L):
+        theta_l = np.concatenate((theta[:,topo[l]], theta[:,-(K+1):]), axis=1)
+        Y[l] = get_Y(theta_l,t,tau) # m*p*2
+        
+    logL = np.tensordot(X, np.log(eps + Y), axes=([-2,-1],[-2,-1])) # logL:n*L*m
+    logL -= np.sum(Y,axis=(-2,-1))
+    
+    if 'r' in params:
+        r = params['r'] # n
+        logL += (np.log(r)*np.sum(X,axis=(-2,-1)))[:,None,None]
+        logL -= (r[:,None,None]-1)*np.sum(Y,axis=(-2,-1))[None,:]
+    
+    return logL
+
+def get_full_logL(X,theta,t,tau,topo,params):
+    L=len(topo)
+    m=len(t)
+    p=len(theta)
+    K=len(tau)-1
+    n_states=len(set(topo.flatten()))
+    parents = np.zeros(n_states,dtype=int)
+    Y = np.zeros((L,m,p,2))
+    for l in range(L):
+        theta_l = np.concatenate((theta[:,topo[l]], theta[:,-(K+1):]), axis=1)
+        Y[l] = get_Y(theta_l,t,tau) # m*p*2
+        parents[topo[l][1:]] = topo[l][:-1]
+        
+    logL = np.tensordot(X, np.log(eps + Y), axes=([-2,-1],[-2,-1])) # logL:n*L*m
+    logL -= np.sum(Y,axis=(-2,-1))
+    #logX = np.sum(gammaln(X+1),axis=(-2,-1),keepdims=True)
+    #logL -= logX
+    
+    if 'r' in params:
+        r = params['r'] # n
+        logL += (np.log(r)*np.sum(X,axis=(-2,-1)))[:,None,None]
+        logL -= (r[:,None,None]-1)*np.sum(Y,axis=(-2,-1))[None,:]
+        
+    if 'lambda_tau' in params:
+        penalty_t = np.sum((theta[n_states:-2]-tau[1:-1])**2)
+        logL -= params['lambda_tau'] * penalty_t
+        
+    if 'lambda_a' in params:
+        penalty_a = np.sum((theta[1:n_states]-theta[parents[1:n_states]])**2)
+        logL -= params['lambda_a'] * penalty_a
+    
+    return logL
     
 def update_theta_j(theta0, x, Q, t, tau, topo, params, restrictions=None, bnd=1000, bnd_beta=1000, bnd_tau=0.5, miter=1000):
     """

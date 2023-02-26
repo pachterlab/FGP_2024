@@ -251,14 +251,23 @@ class Trajectory:
         self.converged = False
         self.theta = theta.copy()
         
-        Q, lower_bound = self.update_weight(X)  
-        lower_bounds.append(lower_bound)
-        
         silence = not bool(self.verbose)
         for i in tqdm(range(epoch), disable=silence):
             #self.params['epoch']= i/epoch
             #prev_lower_bound = lower_bound
-            ## EM algorithm   
+            
+            ### EM algorithm  ###
+            ### E step
+            Q, lower_bound = self.update_weight(X,beta=beta)  
+            lower_bounds.append(lower_bound)
+            #self.Q_hist.append(Q)
+            
+            ### check converged
+            #change = lower_bound - prev_lower_bound
+            #if abs(change) < tol:
+            #    self.converged = True
+            #    break
+            
             ### normalization
             #if i>3 :
             #    Q = self.normalize_Q(Q)
@@ -268,18 +277,9 @@ class Trajectory:
             self.update_global_time_scale(X)
             #self.theta_hist.append(self.theta.copy())
             
-            ### E step 
-            Q, lower_bound = self.update_weight(X,beta=beta)  
-            lower_bounds.append(lower_bound)
-            #self.Q_hist.append(Q)
-            
-            ## check converged
-            #change = lower_bound - prev_lower_bound
-            #if abs(change) < tol:
-            #    self.converged = True
-            #    break
         
-        return [Q, lower_bounds]
+        Q, lower_bound = self.update_weight(X,beta=beta)
+        return [Q, lower_bound]
     
     def fit_warm_start(self, X, Q=None, theta=None, epoch=20, beta=1, parallel=False, n_threads=1):
         """
@@ -474,6 +474,12 @@ class Trajectory:
 
         """
         
+        if "lambda_tau" not in params:
+            params['lambda_tau'] = 0.1
+
+        if "lambda_a" not in params:
+            params['lambda_a'] = 0
+            
         self.params = params
         self.check_params(self)
         
@@ -516,7 +522,7 @@ class Trajectory:
             lower bound value
         """
         
-        logL = self.get_logL(X,self.theta,self.t,self.tau,self.topo,self.params) # with size (n,self.L,self.m)
+        logL = self.get_full_logL(X,self.theta,self.t,self.tau,self.topo,self.params) # with size (n,self.L,self.m)
         
         if self.prior is not None:
             logL += np.log(self.prior)

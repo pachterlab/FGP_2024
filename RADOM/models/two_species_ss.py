@@ -253,9 +253,20 @@ def get_Y_hat(theta,t,tau,topo,params):
     return Y
 
 def get_logL(X,theta,t,tau,topo,params):
-    Y = get_Y_hat(theta,t,tau,topo,params)
+    L=len(topo)
+    m=len(t)
+    p=len(theta)
+    n_states=len(set(topo.flatten()))
+    parents = np.zeros(n_states,dtype=int)
+    Y = np.zeros((L,m,p,2))
+    for l in range(L):
+        theta_l = np.concatenate((theta[:,topo[l]], theta[:,-2:]), axis=1)
+        Y[l] = get_Y(theta_l,t,tau) # m*p*2
+        parents[topo[l][1:]] = topo[l][:-1]
     logL = np.tensordot(X, np.log(eps + Y), axes=([-2,-1],[-2,-1])) # logL:n*L*m
     logL -= np.sum(Y,axis=(-2,-1))
+    if "lambda_a" in params:
+        logL -= params["lambda_a"] * np.sum((theta[1:n_states]-theta[parents[1:n_states]])**2)
     #logX = np.sum(gammaln(X+1),axis=(-2,-1),keepdims=True)
     #logL -= logX
     return logL
