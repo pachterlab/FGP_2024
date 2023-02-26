@@ -13,7 +13,7 @@ theta for each gene contains transcription rate of each states, beta, gamma.
 
 import numpy as np
 from scipy.optimize import minimize
-#from scipy.special import gammaln
+from scipy.special import gammaln
 
 
 # global parameters: upper and lower limits for numerical stability
@@ -265,12 +265,17 @@ def get_logL(X,theta,t,tau,topo,params):
         parents[topo[l][1:]] = topo[l][:-1]
     logL = np.tensordot(X, np.log(eps + Y), axes=([-2,-1],[-2,-1])) # logL:n*L*m
     logL -= np.sum(Y,axis=(-2,-1))
+    logL  -= np.sum(gammaln(X+1),axis=(-2,-1),keepdims=True)
+    
+    if 'r' in params:
+        r = params['r'] # n
+        logL += (np.log(r)*np.sum(X,axis=(-2,-1)))[:,None,None]
+        logL -= (r[:,None,None]-1)*np.sum(Y,axis=(-2,-1))[None,:]
+        
     if "lambda_a" in params:
-        logL -= params["lambda_a"] * np.sum((theta[1:n_states]-theta[parents[1:n_states]])**2)
-    #logX = np.sum(gammaln(X+1),axis=(-2,-1),keepdims=True)
-    #logL -= logX
+        logL -= params["lambda_a"] * np.sum((theta[:,1:n_states]-theta[:,parents[1:n_states]])**2)
+    
     return logL
-
 
 def update_theta_j(theta0, x, Q, t, tau, topo, params=None, restrictions=None, bnd=10000, bnd_beta=10000, miter=1000):
     """

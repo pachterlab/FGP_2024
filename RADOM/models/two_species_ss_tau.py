@@ -12,7 +12,7 @@ theta for each gene contains transcription rate of each states, u0, beta, gamma.
 
 import numpy as np
 from scipy.optimize import minimize
-#from scipy.special import gammaln
+from scipy.special import gammaln
 
 
 # global parameters: upper and lower limits for numerical stability
@@ -299,26 +299,6 @@ def get_logL(X,theta,t,tau,topo,params):
     m=len(t)
     p=len(theta)
     K=len(tau)-1
-    Y = np.zeros((L,m,p,2))
-    for l in range(L):
-        theta_l = np.concatenate((theta[:,topo[l]], theta[:,-(K+1):]), axis=1)
-        Y[l] = get_Y(theta_l,t,tau) # m*p*2
-        
-    logL = np.tensordot(X, np.log(eps + Y), axes=([-2,-1],[-2,-1])) # logL:n*L*m
-    logL -= np.sum(Y,axis=(-2,-1))
-    
-    if 'r' in params:
-        r = params['r'] # n
-        logL += (np.log(r)*np.sum(X,axis=(-2,-1)))[:,None,None]
-        logL -= (r[:,None,None]-1)*np.sum(Y,axis=(-2,-1))[None,:]
-    
-    return logL
-
-def get_full_logL(X,theta,t,tau,topo,params):
-    L=len(topo)
-    m=len(t)
-    p=len(theta)
-    K=len(tau)-1
     n_states=len(set(topo.flatten()))
     parents = np.zeros(n_states,dtype=int)
     Y = np.zeros((L,m,p,2))
@@ -329,8 +309,7 @@ def get_full_logL(X,theta,t,tau,topo,params):
         
     logL = np.tensordot(X, np.log(eps + Y), axes=([-2,-1],[-2,-1])) # logL:n*L*m
     logL -= np.sum(Y,axis=(-2,-1))
-    #logX = np.sum(gammaln(X+1),axis=(-2,-1),keepdims=True)
-    #logL -= logX
+    logL -= np.sum(gammaln(X+1),axis=(-2,-1),keepdims=True)
     
     if 'r' in params:
         r = params['r'] # n
@@ -338,11 +317,11 @@ def get_full_logL(X,theta,t,tau,topo,params):
         logL -= (r[:,None,None]-1)*np.sum(Y,axis=(-2,-1))[None,:]
         
     if 'lambda_tau' in params:
-        penalty_t = np.sum((theta[n_states:-2]-tau[1:-1])**2)
+        penalty_t = np.sum((theta[:,n_states:-2]-np.reshape(tau[1:-1],(1,-1)))**2)
         logL -= params['lambda_tau'] * penalty_t
         
     if 'lambda_a' in params:
-        penalty_a = np.sum((theta[1:n_states]-theta[parents[1:n_states]])**2)
+        penalty_a = np.sum((theta[:,1:n_states]-theta[:,parents[1:n_states]])**2)
         logL -= params['lambda_a'] * penalty_a
     
     return logL

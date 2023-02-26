@@ -332,27 +332,6 @@ def get_logL(X,theta,t,tau,topo,params):
     L=len(topo)
     m=len(t)
     p=len(theta)
-    Y = np.zeros((L,m,p,2))
-    for l in range(L):
-        theta_l = np.concatenate((theta[:,topo[l]], theta[:,-3:]), axis=1)
-        Y[l] = get_Y(theta_l,t,tau) # m*p*2
-        
-    logL = np.tensordot(X, np.log(eps + Y), axes=([-2,-1],[-2,-1])) # logL:n*L*m
-    logL -= np.sum(Y,axis=(-2,-1))
-    #logX = np.sum(gammaln(X+1),axis=(-2,-1),keepdims=True)
-    #logL -= logX
-    
-    if 'r' in params:
-        r = params['r'] # n
-        logL += (np.log(r)*np.sum(X,axis=(-2,-1)))[:,None,None]
-        logL -= (r[:,None,None]-1)*np.sum(Y,axis=(-2,-1))[None,:]
-    
-    return logL
-
-def get_full_logL(X,theta,t,tau,topo,params):
-    L=len(topo)
-    m=len(t)
-    p=len(theta)
     n_states=len(set(topo.flatten()))
     parents = np.zeros(n_states,dtype=int)
     Y = np.zeros((L,m,p,2))

@@ -19,11 +19,11 @@ if __name__ == "__main__":
     logb_var=1
     
     ### change this when changing models ###
-    from two_species_tau import check_params, guess_theta, get_Y_hat, get_logL, update_theta_j, neglogL, neglogL_jac
-    theta=np.ones((p,n_states+K+2))
+    from two_species_ss_tau import check_params, guess_theta, get_Y_hat, get_logL, update_theta_j, neglogL, neglogL_jac
+    theta=np.ones((p,n_states+K+1))
     theta[:,:n_states]=np.exp(np.random.uniform(0,loga_max,size=(p,n_states)))-1
     theta[:,n_states:(n_states+K-1)]=tau[1:-1]
-    theta[:,-3]=np.exp(np.random.uniform(0,loga_max,size=p))-1
+    #theta[:,-3]=np.exp(np.random.uniform(0,loga_max,size=p))-1
     theta[:,-2:]=np.exp(np.random.normal(logb_mu,logb_var,size=(p,2)))
     ### change this when changing models ###
     

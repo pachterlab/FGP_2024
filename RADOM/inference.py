@@ -276,10 +276,10 @@ class Trajectory:
             self.update_theta(X,Q,parallel=parallel,n_threads=n_threads) ### M step
             self.update_global_time_scale(X)
             #self.theta_hist.append(self.theta.copy())
-            
         
         Q, lower_bound = self.update_weight(X,beta=beta)
-        return [Q, lower_bound]
+        lower_bounds.append(lower_bound)
+        return [Q, lower_bounds]
     
     def fit_warm_start(self, X, Q=None, theta=None, epoch=20, beta=1, parallel=False, n_threads=1):
         """
@@ -522,7 +522,7 @@ class Trajectory:
             lower bound value
         """
         
-        logL = self.get_full_logL(X,self.theta,self.t,self.tau,self.topo,self.params) # with size (n,self.L,self.m)
+        logL = self.get_logL(X,self.theta,self.t,self.tau,self.topo,self.params) # with size (n,self.L,self.m)
         
         if self.prior is not None:
             logL += np.log(self.prior)
