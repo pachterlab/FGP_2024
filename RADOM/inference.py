@@ -33,8 +33,9 @@ class Trajectory:
         """
         set model and global parameters
         """
-        self.topo=topo
-        self.tau=tau
+        self.topo=np.array(topo,dtype=int)
+        self.prior_tau=np.array(tau,dtype=float)
+        self.tau=np.array(tau,dtype=float)
         self.L=len(topo)
         self.n_states=len(set(topo.flatten()))
         self.K=len(tau)-1
@@ -216,10 +217,41 @@ class Trajectory:
             return -lower_bound
             
         res = minimize_scalar(fun=Obj, args=(self.theta,X,self.t,self.tau,self.topo,self.params), bounds=(-1, 1), method='bounded',
-                              options={'maxiter': 100000,'disp': False})
+                              options={'maxiter': 100,'disp': False})
         self.theta[:,-2:] *= 10**res.x
         return 
     
+    def update_global_tau(self, X):
+        if self.model[-3:] == "tau":
+            return
+        
+        def Obj(dt,k,tau,theta,X,t,prior_tau,topo,params,lambda_tau):
+            tau_ = tau.copy()
+            tau_[k] += dt
+            logL = self.get_logL(X,theta,t,tau_,topo,params) # with size (n,self.L,self.m)     
+            if self.prior is not None:
+                logL += np.log(self.prior)
+            else:
+                logL += - np.log(self.m) - np.log(self.L)
+
+            a = np.amax(logL,axis=(-2,-1))
+            temp = np.exp(logL-a[:,None,None])
+            temp_sum = temp.sum(axis=(-2,-1))
+            lower_bound = np.mean( np.log(temp_sum) + a )
+            lower_bound -= lambda_tau * (tau_[k]-prior_tau[k])**2
+            return -lower_bound
+        
+        if "lambda_tau" in self.params:
+            lambda_tau = X.shape[1] * self.params["lambda_tau"]
+        else:
+            lambda_tau = X.shape[1] * 0.1
+            
+        new_tau = self.tau.copy()
+        for k in range(1,len(self.tau)-1): 
+            res = minimize_scalar(fun=Obj, args=(k,self.tau,self.theta,X,self.t,self.prior_tau,self.topo,self.params,lambda_tau), bounds=(-0.1, 0.1), method='bounded', options={'maxiter': 100,'disp': False})
+            new_tau[k] += res.x
+        self.tau = new_tau
+        return 
     
     def _fit(self, X, theta, epoch, beta, parallel, n_threads):
         """
@@ -274,7 +306,9 @@ class Trajectory:
            
             ### M step 
             self.update_theta(X,Q,parallel=parallel,n_threads=n_threads) ### M step
-            self.update_global_time_scale(X)
+            if i>1:
+                self.update_global_tau(X)
+            #self.update_global_time_scale(X)
             #self.theta_hist.append(self.theta.copy())
         
         Q, lower_bound = self.update_weight(X,beta=beta)
