@@ -55,7 +55,7 @@ class Trajectory:
         
         return None
     
-    def _set_m(self,m):
+    def _set_time_grids(self,m):
         self.m=m
         self.t=np.linspace(self.tau[0],self.tau[-1],m)
     
@@ -68,8 +68,8 @@ class Trajectory:
     
     def _initialize_Q(self, n):
         Q=1+np.random.uniform(0,1,size=(n,self.L,self.m))
-        if self.prior is not None:
-            Q *= self.prior
+        if self.weights is not None:
+            Q *= self.weights
         Q=Q/Q.sum(axis=(-2,-1),keepdims=True)
         return Q
 
@@ -136,7 +136,7 @@ class Trajectory:
         self.theta[gene_idx] = new_theta
         return
 
-    def update_weight(self,X,beta=1):
+    def update_Q(self,X,beta=1):
         """
         calculate q with beta
 
@@ -170,8 +170,8 @@ class Trajectory:
         ## Q = softmax(logL, axis=(-2,-1))
         a = np.amax(logL,axis=(-2,-1))
         relative_L = np.exp(logL-a[:,None,None])
-        if self.prior is not None:
-            relative_L *= self.prior
+        if self.weights is not None:
+            relative_L *= self.weights
         else:
             relative_L /= self.m*self.L
         relative_L_sum = relative_L.sum(axis=(-2,-1))
@@ -203,8 +203,8 @@ class Trajectory:
             new_theta = theta.copy()
             new_theta[:,-2:] *= 10**x
             logL = self.get_logL(X,new_theta,t,tau,topo,params) # with size (n,self.L,self.m)     
-            if self.prior is not None:
-                logL += np.log(self.prior)
+            if self.weights is not None:
+                logL += np.log(self.weights)
             else:
                 logL += - np.log(self.m) - np.log(self.L)
             
@@ -229,8 +229,8 @@ class Trajectory:
             tau_ = tau.copy()
             tau_[k] += dt
             logL = self.get_logL(X,theta,t,tau_,topo,params) # with size (n,self.L,self.m)     
-            if self.prior is not None:
-                logL += np.log(self.prior)
+            if self.weights is not None:
+                logL += np.log(self.weights)
             else:
                 logL += - np.log(self.m) - np.log(self.L)
 
@@ -253,7 +253,7 @@ class Trajectory:
         self.tau = new_tau
         return 
     
-    def _fit(self, X, theta, epoch, beta, parallel, n_threads):
+    def _fit(self, X, epoch, beta, parallel, n_threads):
         """
         The method fits the model by iterating between E-step and M-step for at most `epoch` iterations.
         The warm start means that either Q or theta is provided.
@@ -281,7 +281,6 @@ class Trajectory:
         #lower_bound = -np.inf
         lower_bounds = []
         self.converged = False
-        self.theta = theta.copy()
         
         silence = not bool(self.verbose)
         for i in tqdm(range(epoch), disable=silence):
@@ -290,7 +289,7 @@ class Trajectory:
             
             ### EM algorithm  ###
             ### E step
-            Q, lower_bound = self.update_weight(X,beta=beta)  
+            Q, lower_bound = self.update_Q(X,beta=beta)  
             lower_bounds.append(lower_bound)
             #self.Q_hist.append(Q)
             
@@ -307,57 +306,17 @@ class Trajectory:
             ### M step 
             self.update_theta(X,Q,parallel=parallel,n_threads=n_threads) ### M step
             if i>1:
-                self.update_global_tau(X)
+                if self.fit_tau:
+                    self.update_global_tau(X)
+                if self.fit_weights:
+                    self.weights = Q.mean(axis=0)
             #self.update_global_time_scale(X)
             #self.theta_hist.append(self.theta.copy())
         
-        Q, lower_bound = self.update_weight(X,beta=beta)
+        Q, lower_bound = self.update_Q(X,beta=beta)
         lower_bounds.append(lower_bound)
         return [Q, lower_bounds]
-    
-    def fit_warm_start(self, X, Q=None, theta=None, epoch=20, beta=1, parallel=False, n_threads=1):
-        """
-        The method fits the model by iterating between E-step and M-step for at most `epoch` iterations.
-        The warm start means that either a reasonable Q or theta is provided.
-    
 
-        Parameters
-        ----------
-        X : ndarray, shape (n, p, 2)
-            n cells * p genes * 2 species data matrix.
-        Q : TYPE
-            DESCRIPTION.
-        epoch : TYPE, optional
-            DESCRIPTION. The default is 10.
-        tol : TYPE, optional
-            DESCRIPTION. The default is 0.01.
-        parallel : TYPE, optional
-            DESCRIPTION. The default is False.
-        n_threads : TYPE, optional
-            DESCRIPTION. The default is 1.
-
-        Returns
-        -------
-        theta_hist : TYPE
-            DESCRIPTION.
-        weight_hist : TYPE
-            DESCRIPTION.
-        lower_bounds : TYPE
-            DESCRIPTION.
-
-        """
-        
-        if theta is None:
-            if Q is not None:
-                n, L, m = Q.shape
-                self._set_m(m)
-                self._initialize_theta(X)
-                self.update_theta(X,Q,parallel=parallel,n_threads=n_threads)
-                theta = self.theta.copy()
-            else:
-                raise AssertionError("either theta or Q needs to be provided")
-        
-        return self._fit(X, theta, epoch, beta, parallel, n_threads)
     
     def fit_multi_init(self, X, n_init=10, perm_theta=False, epoch=100, beta=1, parallel=False, n_threads=1, seed=42):
         """
@@ -402,8 +361,8 @@ class Trajectory:
                 print("trial "+str(init+1))
             self._initialize_theta(X)
             Q = self._initialize_Q(n)  
-            self.update_theta(X,Q,parallel=parallel,n_threads=n_threads)
-            Q, lower_bound = self._fit(X, self.theta, epoch, beta, parallel, n_threads)
+            self.update_theta(X=X,Q=Q,parallel=parallel,n_threads=n_threads)
+            Q, lower_bound = self._fit(X=X, epoch=epoch, beta=beta, parallel=parallel, n_threads=n_threads)
             theta0 = self.theta.copy()
             
 
@@ -444,7 +403,8 @@ class Trajectory:
                         
                     theta_perm = theta0.copy()
                     theta_perm[:,:(self.n_states)] = theta0[:,np.array(perm)]
-                    Q, lower_bound = self._fit(X, theta_perm, epoch, beta, parallel, n_threads)
+                    self.theta = theta_perm.copy()
+                    Q, lower_bound = self._fit(X=X, epoch=epoch, beta=beta, parallel=parallel, n_threads=n_threads)
 
                     if lower_bound[-1] > max_lower_bound or max_lower_bound == -np.inf:
                         max_lower_bound = lower_bound[-1]
@@ -465,7 +425,7 @@ class Trajectory:
             
         return [best_Q, elbos]
     
-    def fit(self, X, Q=None, theta=None, prior=None, params={}, model_restrictions=None, m=100, n_init=10, perm_theta = False, epoch=100, beta=1, parallel=False, n_threads=1, seed=42):
+    def fit(self, X, warm_start=False, Q=None, theta=None, prior=None, fit_weights=False, fit_tau=False, params={}, model_restrictions=None, m=100, n_init=10, perm_theta = False, epoch=100, beta=1, parallel=False, n_threads=1, seed=42):
         """
         
 
@@ -473,8 +433,8 @@ class Trajectory:
         ----------
         X : TYPE
             DESCRIPTION.
-        Q : TYPE, optional
-            DESCRIPTION. The default is None.
+        Q : 3D array
+            Posteriors/responsibilities. The default is None.
         theta : TYPE, optional
             DESCRIPTION. The default is None.
         prior : TYPE, optional
@@ -506,33 +466,45 @@ class Trajectory:
             DESCRIPTION.
 
         """
+        self.params = params
+        self.weights = prior
+        self.fit_weights = fit_weights
+        self.fit_tau = fit_tau
         
         if "lambda_tau" not in params:
-            params['lambda_tau'] = 0.1
+            self.params['lambda_tau'] = 0.1
 
         if "lambda_a" not in params:
-            params['lambda_a'] = 0
-            
-        self.params = params
-        self.check_params(self)
+            self.params['lambda_a'] = 0          
         
-        self.prior = prior
-        self._set_m(m)
+        #self.check_params(self)   
         
+        if Q is not None:
+            m = Q.shape[-1]  
+        else:
+            if prior is not None:
+                m = prior.shape[-1]  
+        
+        if Q is not None:
+            assert Q.shape == (len(X),self.L,m)
         if prior is not None:
-            if Q is None:
-                assert m == prior.shape[-1]  
-            else:
-                assert Q.shape == prior.shape
+            assert prior.shape == (len(X),self.L,m)            
+        self._set_time_grids(m)
         
-        if Q is not None or theta is not None:
+        if warm_start:
             if bool(self.verbose):
-                print("run method fit_warm_start")
-            res = self.fit_warm_start(X, Q=Q, theta=theta, epoch=epoch, beta=beta, parallel=parallel, n_threads=n_threads)
+                print("fitting with warm start")
+            if theta is None:
+                assert Q is not None
+                self._initialize_theta(X)
+                self.update_theta(X,Q,parallel=parallel,n_threads=n_threads)  
+            else:
+                self.theta = theta.copy()
+            res = self._fit(X=X, epoch=epoch, beta=beta, parallel=parallel, n_threads=n_threads)
         else:
             if bool(self.verbose):
-                print("run method fit_multi_init")
-            res = self.fit_multi_init(X, n_init=n_init, perm_theta=perm_theta, epoch=epoch, beta=beta, parallel=parallel, n_threads=n_threads, seed=seed)
+                print("fitting with multiple random initializations")
+            res = self.fit_multi_init(X=X, n_init=n_init, perm_theta=perm_theta, epoch=epoch, beta=beta, parallel=parallel, n_threads=n_threads, seed=seed)
         
         Q, elbos = res
         self.X = X
@@ -557,8 +529,8 @@ class Trajectory:
         
         logL = self.get_logL(X,self.theta,self.t,self.tau,self.topo,self.params) # with size (n,self.L,self.m)
         
-        if self.prior is not None:
-            logL += np.log(self.prior)
+        if self.weights is not None:
+            logL += np.log(self.weights)
         else:
             logL += - np.log(self.m) - np.log(self.L)
             
