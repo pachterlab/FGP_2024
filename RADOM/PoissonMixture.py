@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Created on Mon Mar 13 13:19:16 2023
-
-@author: fang
-"""
 
 import numpy as np
 from scipy.special import logsumexp, softmax
@@ -17,19 +12,17 @@ eps = 1e-6
 
 class PoissonMixture:
     """
-    Representation of a trajectory model probability distribution.
-    
-    
+    Poisson mixture model
+
     Attributes
     ----------
-    n_components : int, default=1
-    tau:     
+    n_components : int, number of mixtures, default=1
+    theta : ndarray of shape (n_components, p, 2). 
+            Means of Poisson distribution for U and S of each gene
+    weights : ndarray of shape (n_components,). Weights of each mixture as in GMM.
     """
 
     def __init__(self, n_components=1, verbose=0):
-        """
-        set model and global parameters
-        """
         self.n_components = n_components
         self.verbose = verbose    
         return
@@ -68,15 +61,15 @@ class PoissonMixture:
 
         Parameters
         ----------
-        X : TYPE
+        X : ndarray of shape(n,p,2)
             DESCRIPTION.
         warm_start : TYPE
             DESCRIPTION.
-        Q : TYPE, optional
-            DESCRIPTION. The default is None.
+        Q : ndarray of shape(n,n_components)
+            Posteriors. The default is None.
         theta : TYPE, optional
             DESCRIPTION. The default is None.
-        prior : TYPE, optional
+        weights : TYPE, optional
             DESCRIPTION. The default is None.
         n_init : TYPE, optional
             DESCRIPTION. The default is 10.
@@ -94,6 +87,7 @@ class PoissonMixture:
         self.warm_start = warm_start
         np.random.seed(seed)
         
+        ### Initialize weights
         if weights is None:
             self.weights = np.ones(self.n_components)/self.n_components
         elif len(weights) == self.n_components:

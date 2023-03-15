@@ -483,8 +483,7 @@ class Trajectory:
             m = Q.shape[-1]  
         else:
             if prior is not None:
-                m = prior.shape[-1]  
-        
+                m = prior.shape[-1]   
         if Q is not None:
             assert Q.shape == (len(X),self.L,m)
         if prior is not None:
