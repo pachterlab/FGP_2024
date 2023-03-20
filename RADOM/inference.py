@@ -309,7 +309,7 @@ class Trajectory:
                 if self.fit_tau:
                     self.update_global_tau(X)
                 if self.fit_weights:
-                    self.weights = Q.mean(axis=0)
+                    self.weights = Q.mean(axis=0,keepdims=True)
             #self.update_global_time_scale(X)
             #self.theta_hist.append(self.theta.copy())
         
@@ -487,7 +487,7 @@ class Trajectory:
         if Q is not None:
             assert Q.shape == (len(X),self.L,m)
         if prior is not None:
-            assert prior.shape == (len(X),self.L,m)            
+            assert np.broadcast(Q, prior).shape == (len(X),self.L,m)            
         self._set_time_grids(m)
         
         if warm_start:
