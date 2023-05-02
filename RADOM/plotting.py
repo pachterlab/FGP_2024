@@ -72,7 +72,7 @@ def plot_t(traj,Q=None,l=0,ax=None,t=None,order_cells=False):
         else:
             order=np.arange(len(t))
         im = ax.imshow(Q[order,l,:],aspect="auto",cmap=cmap_Q);
-        ax.text(0.9, 0.9, "CCC="+str(np.around(CCC(t_hat,t))), horizontalalignment='right', 
+        ax.text(0.9, 0.9, "CCC="+str(np.around(CCC(t_hat,t),3)), horizontalalignment='right', 
                  verticalalignment='top', transform=ax.transAxes, color="black",fontsize=24);
     else:
         if order_cells:
@@ -92,7 +92,7 @@ def plot_theta(theta,theta_hat,dot_color='grey'):
     for i in range(n_theta):
         ax[i].plot(theta[:,i],theta[:,i],color='black');
         ax[i].plot(theta[:,i],theta_hat[:,i],'.',color='tab:red');
-        ax[i].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,i],theta[:,i]),2)), horizontalalignment='right', 
+        ax[i].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,i],theta[:,i]),3)), horizontalalignment='right', 
                  verticalalignment='top', transform=ax[i].transAxes, color="black",fontsize=24);
         ax[i].set_title("a"+str(i+1))
         ax[i].set_xlabel("true values")
@@ -119,7 +119,7 @@ def plot_theta_1(theta,theta_hat):
     for i in range(n_theta):
         ax[i].plot(1+theta[:,i],1+theta[:,i],color='black');
         ax[i].plot(1+theta[:,i],1+theta_hat[:,i],'.',color='tab:red');
-        ax[i].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,i],theta[:,i]),1)), horizontalalignment='right', 
+        ax[i].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,i],theta[:,i]),3)), horizontalalignment='right', 
                  verticalalignment='top', transform=ax[i].transAxes, color="black",fontsize=24);
         ax[i].set_title("a"+str(i+1))
         ax[i].set_xlabel("true values + 1")

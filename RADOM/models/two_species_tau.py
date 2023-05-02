@@ -319,7 +319,7 @@ def get_logL(X,theta,t,tau,topo,params):
         logL -= (r[:,None,None]-1)*np.sum(Y,axis=(-2,-1))[None,:]
         
     if 'lambda_tau' in params:
-        penalty_t = np.sum((theta[:,n_states:-2]-np.reshape(tau[1:-1],(1,-1)))**2)
+        penalty_t = np.sum((theta[:,n_states:-3]-np.reshape(tau[1:-1],(1,-1)))**2)
         logL -= p*params['lambda_tau'] * penalty_t
         
     if 'lambda_a' in params:
