@@ -10,10 +10,10 @@ from math import log
 import numpy as np
 import anndata as ad 
 from importlib import import_module
-import models.two_species_ss as ss
-import models.two_species as ts
+import RADOM.models.two_species_ss as tss
+import RADOM.models.two_species as ts
 
-def simulate_data(topo, tau, n, p, model="two_species", loga_max=4, logb_max=2, random_seed=2022, loomfilepath=None):    
+def simulate_data(topo, tau, n, p, model="two_species", loga_mu=2, loga_sd=1, logb_mu=1, logb_sd=0.5, Er=0, rd_var=0, logu_mu=0, logu_sd=0, random_seed=2023, loomfilepath=None):    
     np.random.seed(random_seed)
     L=len(topo)
     n_states=len(set(topo.flatten()))
@@ -21,33 +21,51 @@ def simulate_data(topo, tau, n, p, model="two_species", loga_max=4, logb_max=2, 
     true_t = []
     
     if model == "two_species":
-        theta=np.zeros((p,n_states+4))
-        for j in range(n_states+2):
-            theta[:,j]=np.exp(np.random.uniform(0,loga_max,size=p))-1
-        theta[:,-2]=np.exp(np.random.uniform(0,logb_max,size=p))
-        theta[:,-1]=np.exp(np.random.uniform(0,logb_max,size=p))
-        
-        Y = np.zeros((n*L,p,2))
-        for l in range(L):
-            theta_l = np.concatenate((theta[:,topo[l]], theta[:,-4:]), axis=1)
-            Y[l*n:(l+1)*n] = ts.get_Y(theta_l,t,tau) # m*p*2
-            true_t = np.append(true_t,t)
-            
-    elif model == "two_species_ss":
         theta=np.zeros((p,n_states+3))
-        for j in range(n_states+1):
-            theta[:,j]=np.exp(np.random.uniform(0,loga_max,size=p))-1
-        theta[:,-2]=np.exp(np.random.uniform(0,logb_max,size=p))
-        theta[:,-1]=np.exp(np.random.uniform(0,logb_max,size=p))
+        for j in range(n_states):
+            theta[:,j]=np.random.lognormal(loga_mu, loga_sd, size=p)
+        theta[:,-2:]=np.random.lognormal(logb_mu,logb_sd,size=(p,2))
+        theta[:,:n_states]/=theta[:,-2,None]
+        theta[:,-3]=np.random.lognormal(loga_mu, loga_sd, size=p)/theta[:,-1]
         
         Y = np.zeros((n*L,p,2))
         for l in range(L):
             theta_l = np.concatenate((theta[:,topo[l]], theta[:,-3:]), axis=1)
-            Y[l*n:(l+1)*n] = ss.get_Y(theta_l,t,tau) # m*p*2
+            Y[l*n:(l+1)*n] = ts.get_Y(theta_l,t,tau) # m*p*2
             true_t = np.append(true_t,t)
-
+            
+    elif model == "two_species_ss":
+        theta=np.zeros((p,n_states+2))
+        for j in range(n_states):
+            theta[:,j]=np.random.lognormal(loga_mu, loga_sd,size=p)
+        theta[:,-2:]=np.random.lognormal(logb_mu,logb_sd,size=(p,2))
+        theta[:,:n_states]/=theta[:,-2,None]
+        
+        Y = np.zeros((n*L,p,2))
+        for l in range(L):
+            theta_l = np.concatenate((theta[:,topo[l]], theta[:,-2:]), axis=1)
+            Y[l*n:(l+1)*n] = tss.get_Y(theta_l,t,tau) # m*p*2
+            true_t = np.append(true_t,t)
+    else:
+        raise ValueError('model not implemented')
+        
+    if logu_sd > 0:
+        Ubias = np.random.lognormal(logu_mu,logu_sd,p)
+    else:
+        Ubias = np.ones(p)*np.exp(logu_mu)
+    Y[:,:,0] *= Ubias[None,:]
+        
+    if Er > 0:
+        Z = Er*np.random.poisson(Y/Er)
+    else:
+        Z = Y.copy()
     
-    X = np.random.poisson(Y)
+    if rd_var > 0:
+        read_depth = np.random.gamma(1/rd_var,rd_var,n*L)
+        rd = read_depth/read_depth.mean()
+    else:
+        rd = np.ones(n*L)
+    X = np.random.poisson(rd[:,None,None]*Z)  
     
     if loomfilepath is not None:
         adata=ad.AnnData(np.sum(X,axis=-1))
@@ -60,7 +78,7 @@ def simulate_data(topo, tau, n, p, model="two_species", loga_max=4, logb_max=2, 
         adata.var["true_beta"]=theta[:,-2]
         adata.var["true_gamma"]=theta[:,-1]
         adata.write_loom(loomfilepath)
-    return theta, true_t, Y, X,
+    return theta, true_t, Y, X, Ubias, rd
 
 # Simulations
 

@@ -109,16 +109,14 @@ class Trajectory:
         
         if parallel is True:
             Input_args = []
-            
             for j in gene_idx:
                 params_j = self.params.copy()
-                restrictions = None
-                
+                restrictions = None                
+                if "Ub" in params_j:
+                    params_j['Ub_j'] = params_j['Ub'][j]                   
                 if j in restricted_gene_idx:
-                    restrictions = self.model_restrictions[j]
-                    
-                Input_args.append((self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, params_j, restrictions))
-                
+                    restrictions = self.model_restrictions[j]                    
+                Input_args.append((self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, params_j, restrictions))               
             with Pool(n_threads) as pool:      
                 new_theta = pool.starmap(self.update_theta_j, Input_args)
             new_theta = np.array(new_theta)
@@ -127,7 +125,8 @@ class Trajectory:
             for i,j in enumerate(gene_idx): 
                 params_j = self.params.copy()
                 restrictions = None
-                    
+                if "Ub" in params_j:
+                    params_j['Ub_j'] = params_j['Ub'][j]
                 if j in restricted_gene_idx:
                     restrictions = self.model_restrictions[j]
 

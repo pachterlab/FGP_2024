@@ -191,6 +191,7 @@ def neglogL_jac(theta, x_weighted, marginal_weight, t, tau, topo):
         theta_idx = np.append(topo[l],[-1])
         theta_l = theta[theta_idx]
         Y, dY_dtheta = get_y_jac(theta_l,t,tau) # m*1*len(theta)
+        Y, dY_dtheta = get_y_jac(theta_l,t,tau) # m*2*len(theta)
         coef =  x_weighted[l] / (eps + Y) - marginal_weight[l]
         jac[theta_idx] += np.sum( coef[:,:,None] * dY_dtheta, axis=(0,1))
     return - jac
