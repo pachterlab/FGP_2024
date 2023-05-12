@@ -103,7 +103,7 @@ class PoissonMixture:
         np.random.seed(seed)
         if read_depth is not None:
             assert np.shape(read_depth) == (len(X),) 
-            if read_depth.mean() != 1:
+            if read_depth.mean() != 1 and self.verbose:
                 print("read_depth is not normalized")
         self.rd = read_depth 
              

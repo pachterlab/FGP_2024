@@ -301,16 +301,16 @@ class Trajectory:
             #    break
             
             ### normalization
-            if i>0 and self.norm_Q:
+            if i>=min(10,epoch-3) and self.norm_Q:
                 Q = self.normalize_Q(Q)
            
             ### M step 
             self.update_theta(X,Q,parallel=parallel,n_threads=n_threads) ### M step
-            if i>0 and self.fit_tau:
+            if i>=min(10,epoch-3) and self.fit_tau:
                 self.update_global_tau(X)
                 #if self.fit_weights:
                 #    self.weights = Q.mean(axis=0,keepdims=True)
-            self.update_global_time_scale(X)
+            #self.update_global_time_scale(X)
             #self.theta_hist.append(self.theta.copy())
         
         Q, lower_bound = self.update_Q(X,beta=beta)
@@ -539,7 +539,8 @@ class Trajectory:
             logL += - np.log(self.m) - np.log(self.L)
             
         return np.mean(logsumexp(a=logL, axis=(-2,-1)))
-
+    
+    """
     def compute_genewise_logL(self, X):
         #Y = self.get_Y_hat(self.theta,self.t,self.tau,self.topo,self.params)
         #logL = np.sum(X[:,None,None,:,:]*np.log(r[:,None,None,None,None]*Y[None,:])-r[:,None,None,None,None]*Y[None,:]-gammaln(X[:,None,None,:,:]+1),axis=(-1))    
@@ -548,6 +549,7 @@ class Trajectory:
         Q_entropy = - np.sum(self.Q*np.log(self.Q+1e-10))/n
         prior_entropy = np.sum(self.Q*np.log(self.L*self.m))/n
         return None
+    """
     
     def compute_AIC(self, X, standard=True):
         """
