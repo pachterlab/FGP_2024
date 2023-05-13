@@ -220,7 +220,7 @@ def get_logL(X,theta,t,tau,topo,params):
 
     return logL
 
-def update_theta_j(theta0, x, Q, t, tau, topo, params={}, restrictions=None, bnd=1000, bnd_beta=100, miter=100):
+def update_theta_j(j, theta0, x, Q, t, tau, topo, params={}, restrictions=None):
     """
     
 
@@ -257,16 +257,36 @@ def update_theta_j(theta0, x, Q, t, tau, topo, params={}, restrictions=None, bnd
     x_weighted = np.zeros((L,m,1))
     marginal_weight = np.zeros((L,m,1))
     
+    if 'bnd' in params:
+        bnd = params['bnd']
+    else:
+        bnd=10000
+        
+    if 'bnd_beta' in params:
+        bnd_beta = params['bnd_beta']
+    else:
+        bnd_beta=100000
+        
+    if 'miter' in params:
+        miter = params['miter']
+    else:
+        miter=100
+
+    if 'batch_size' in params:
+        x_idx = np.random.choice(n,params['batch_size'],replace=False)
+    else:
+        x_idx = np.arange(n)
+        
     if 'r' in params:
         r = params['r'] # n
         for l in range(len(topo)):
-            weight_l = Q[:,l,:]/n #n*m
-            x_weighted[l] = weight_l.T@x # m*2 = m*n @ n*2
-            marginal_weight[l] =  (weight_l*r[:,None]).sum(axis=0)[:,None] # m*1
+            weight_l = Q[x_idx,l,:]/len(x_idx) #n*m
+            x_weighted[l] = weight_l.T@x[x_idx] # m*2 = m*n @ n*2
+            marginal_weight[l] =  (weight_l*r[x_idx,None]).sum(axis=0)[:,None] # m*1
     else:
         for l in range(len(topo)):
-            weight_l = Q[:,l,:]/n #n*m
-            x_weighted[l] = weight_l.T@x # m*2 = m*n @ n*2
+            weight_l = Q[x_idx,l,:]/len(x_idx) #n*m
+            x_weighted[l] = weight_l.T@x[x_idx] # m*2 = m*n @ n*2
             marginal_weight[l] = weight_l.sum(axis=0)[:,None] # m*1
     
     theta00 = theta0.copy()

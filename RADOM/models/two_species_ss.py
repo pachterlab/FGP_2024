@@ -286,7 +286,7 @@ def get_logL(X,theta,t,tau,topo,params):
     
     return logL
 
-def update_theta_j(theta0, x, Q, t, tau, topo, params=None, restrictions=None, bnd=10000, bnd_beta=10000, miter=1000):
+def update_theta_j(j, theta0, x, Q, t, tau, topo, params=None, restrictions=None):
     """
     with jac
 
@@ -320,24 +320,45 @@ def update_theta_j(theta0, x, Q, t, tau, topo, params=None, restrictions=None, b
     n,L,m = Q.shape
     x_weighted = np.zeros((L,m,2))
     marginal_weight = np.zeros((L,m,1))
-    
-    if 'r' in params:
-        r = params['r'] # n
-        for l in range(len(topo)):
-            weight_l = Q[:,l,:]/n #n*m
-            x_weighted[l] = weight_l.T@x # m*2 = m*n @ n*2
-            marginal_weight[l] =  (weight_l*r[:,None]).sum(axis=0)[:,None] # m*1
-    else:
-        for l in range(len(topo)):
-            weight_l = Q[:,l,:]/n #n*m
-            x_weighted[l] = weight_l.T@x # m*2 = m*n @ n*2
-            marginal_weight[l] = weight_l.sum(axis=0)[:,None] # m*1
-    
-    if "Ub_j" in params:
-        Ub = params["Ub_j"]
+        
+    if "Ub" in params:
+        Ub = params["Ub"][j]
     else:
         Ub = 1
     
+    if 'bnd' in params:
+        bnd = params['bnd']
+    else:
+        bnd=10000
+        
+    if 'bnd_beta' in params:
+        bnd_beta = params['bnd_beta']
+    else:
+        bnd_beta=100000
+        
+    if 'miter' in params:
+        miter = params['miter']
+    else:
+        miter=100
+
+    if 'batch_size' in params:
+        x_idx = np.random.choice(n,params['batch_size'],replace=False)
+    else:
+        x_idx = np.arange(n)
+        
+            
+    if 'r' in params:
+        r = params['r'] # n
+        for l in range(len(topo)):
+            weight_l = Q[x_idx,l,:]/len(x_idx) #n*m
+            x_weighted[l] = weight_l.T@x[x_idx] # m*2 = m*n @ n*2
+            marginal_weight[l] =  (weight_l*r[x_idx,None]).sum(axis=0)[:,None] # m*1
+    else:
+        for l in range(len(topo)):
+            weight_l = Q[x_idx,l,:]/len(x_idx) #n*m
+            x_weighted[l] = weight_l.T@x[x_idx] # m*2 = m*n @ n*2
+            marginal_weight[l] = weight_l.sum(axis=0)[:,None] # m*1
+
     n_states=len(set(topo.flatten()))
     theta00 = theta0.copy()
     if np.max(theta00[:n_states]) > np.maximum( np.max(x[:,0]) , np.max(x[:,1]) * theta00[-1] / theta00[-2]):
@@ -357,7 +378,7 @@ def update_theta_j(theta0, x, Q, t, tau, topo, params=None, restrictions=None, b
         res = update_theta_j_restricted(theta00, x_weighted, marginal_weight, t, tau, topo, restrictions, Ub, lambda_a, bnd, bnd_beta, miter)
     return res
 
-def update_theta_j_unrestricted(theta0, x_weighted, marginal_weight, t, tau, topo, Ub=1, lambda_a=0, bnd=10000, bnd_beta=1000, miter=10000):
+def update_theta_j_unrestricted(theta0, x_weighted, marginal_weight, t, tau, topo, Ub=1, lambda_a=0, bnd=10000, bnd_beta=1000, miter=100):
 
     """
     with jac
@@ -395,7 +416,7 @@ def update_theta_j_unrestricted(theta0, x_weighted, marginal_weight, t, tau, top
     res = minimize(fun=neglogL, x0=theta0, args=(x_weighted,marginal_weight,t,tau,topo,Ub,lambda_a), method = 'L-BFGS-B' , jac = neglogL_jac, bounds=bound, options={'maxiter': miter,'disp': False}) 
     return res.x
 
-def update_theta_j_restricted(theta0, x_weighted, marginal_weight, t, tau, topo, restrictions, Ub=1, lambda_a=0, bnd=10000, bnd_beta=1000, miter=10000):
+def update_theta_j_restricted(theta0, x_weighted, marginal_weight, t, tau, topo, restrictions, Ub=1, lambda_a=0, bnd=10000, bnd_beta=1000, miter=100):
 
     # define a new neglogL inside with fewer parameters
     redundant, blanket = restrictions # 1,0 => a[1] = a[0], 0, -3 => a[0] = u_0,
