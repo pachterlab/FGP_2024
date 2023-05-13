@@ -12,7 +12,7 @@ if __name__ == '__main__':
     tau=(0,1,2)
     n = 2000
     p = 200
-    true_theta, true_t, Y, X, Ubias, rd = simulate_data(topo, tau, n, p, model="two_species_ss",logu_mu=-2,logu_sd=1,random_seed=2023)
+    true_theta, true_t, Y, X, Ubias, rd = simulate_data(topo, tau, n, p, model="two_species_ss",logu_mu=-2,logu_sd=1,random_seed=2019)
     
     plot_p = min(10, p)
     fig, ax = plt.subplots(1,plot_p,figsize=(6*plot_p,4))
@@ -23,8 +23,6 @@ if __name__ == '__main__':
         ax[i].set_title(j)
        
     ##### fit with correct Q0 #####
-    params = {"r":rd,'Ub':Ubias}
-    traj = Trajectory(topo, tau, model="two_species_ss",verbose=1)
     L = len(topo)
     resol = 10
     m = n//resol
@@ -34,8 +32,26 @@ if __name__ == '__main__':
             Q0[i+n*l,l,i//resol] = 1
     #Q0 = np.random.uniform(0,1,size=Q0.shape)
     Q0 /= Q0.sum(axis=(-2,-1),keepdims=True)
-    r = X.mean(axis=(1,2))/X.mean()
-    traj = traj.fit(X, warm_start=True, Q=Q0, params=params, n_init=10, epoch=10)#, parallel=True, n_threads=4)
+    
+    ##### fit with correct theta0 #####
+    r = X.mean(axis=(1,2))/X.mean()   
+    params = {"r":rd,'Ub':Ubias,"miter":1000}
+    traj1 = Trajectory(topo, tau, model="two_species_ss",verbose=1)
+    traj1 = traj1.fit(X, warm_start=True, fit_tau=False, m=100, theta=true_theta.copy(), params=params, n_init=10, epoch=3)#, parallel=True, n_threads=4)
+    
+    traj_true = Trajectory(topo, tau, model="two_species_ss",verbose=1)
+    traj_true = traj_true.fit(X, warm_start=True, m=100, theta=true_theta.copy(), params=params, n_init=10, epoch=0)#, parallel=True, n_threads=4)
+    
+    params = {"r":rd,'Ub':Ubias,"batch_size":2000,"miter":1000}
+    traj = Trajectory(topo, tau, model="two_species_ss",verbose=1)
+    traj = traj.fit(X, warm_start=True, fit_tau=False, theta=true_theta.copy(), params=params, n_init=10, epoch=3)#, parallel=True, n_threads=4)
+    
+    plt.plot(traj1.elbos,'b.')
+    #plt.plot(traj.elbos,'r+')
+    plt.axhline(y=traj_true.elbos[0],color='gray')
+    
+    for Q in traj1.Q_hist:
+        plot_t(traj1,Q=Q,t=true_t)
     
     #plt.plot( [traj.elbos[i][-1] for i in range(len(traj.elbos))],'.')
     true_theta_ = true_theta.copy()

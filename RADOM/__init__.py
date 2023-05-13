@@ -1,5 +1,6 @@
-__version__ = "2023.05.08.08"
+__version__ = "2023.05.13.12"
 
+# 2023.05.13.12: add gene idx and use params to store all parameters for update_theta_j 
 # 2023.05.08.08: CCC --> R2
 # 2023.05.07.08: change to update global tau after 10 epoch
 # 2023.05.02.14: add Ub

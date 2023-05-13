@@ -110,27 +110,20 @@ class Trajectory:
         if parallel is True:
             Input_args = []
             for j in gene_idx:
-                params_j = self.params.copy()
                 restrictions = None                
-                if "Ub" in params_j:
-                    params_j['Ub_j'] = params_j['Ub'][j]                   
                 if j in restricted_gene_idx:
                     restrictions = self.model_restrictions[j]                    
-                Input_args.append((self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, params_j, restrictions))               
+                Input_args.append((j, self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, self.params, restrictions))               
             with Pool(n_threads) as pool:      
                 new_theta = pool.starmap(self.update_theta_j, Input_args)
             new_theta = np.array(new_theta)
         else:
             new_theta = np.zeros((len(gene_idx),n_theta))
             for i,j in enumerate(gene_idx): 
-                params_j = self.params.copy()
                 restrictions = None
-                if "Ub" in params_j:
-                    params_j['Ub_j'] = params_j['Ub'][j]
                 if j in restricted_gene_idx:
                     restrictions = self.model_restrictions[j]
-
-                new_theta[i]=self.update_theta_j(self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, params_j, restrictions)
+                new_theta[i]=self.update_theta_j(j, self.theta[j], X[:,j], Q, self.t, self.tau, self.topo, self.params, restrictions)
                     
         self.theta[gene_idx] = new_theta
         return
@@ -245,7 +238,10 @@ class Trajectory:
         else:
             lambda_tau = 0 #X.shape[1] * 0.1
             
-        bnd_tau = 0.1 * np.min(np.diff(self.tau))
+        if "bnd_tau" in self.params:
+            bnd_tau = self.params["bnd_tau"]
+        else:
+            bnd_tau = 0.1 * np.min(np.diff(self.tau))
         
         new_tau = self.tau.copy()
         for k in range(1,len(self.tau)-1): 
@@ -282,6 +278,7 @@ class Trajectory:
         #lower_bound = -np.inf
         lower_bounds = []
         self.converged = False
+        self.Q_hist = []
         
         silence = not bool(self.verbose)
         for i in tqdm(range(epoch), disable=silence):
@@ -292,7 +289,7 @@ class Trajectory:
             ### E step
             Q, lower_bound = self.update_Q(X,beta=beta)  
             lower_bounds.append(lower_bound)
-            #self.Q_hist.append(Q)
+            self.Q_hist.append(Q)
             
             ### check converged
             #change = lower_bound - prev_lower_bound
