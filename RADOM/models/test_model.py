@@ -1,101 +1,63 @@
-
-#%%
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from scipy.optimize import check_grad, approx_fprime
-    import numpy as np
-    import two_species
-    import two_species_relative
-    
+    import numpy as np    
 
-    """
-    np.random.seed(42)
-    topo = np.array([[0,]])
-    tau=(0,1)
-    n = 10000
-    p = 1
-    K=len(tau)-1
-    t=np.linspace(0, 1, n)
-    
-    loga_max=4
-    logb_max=2
-    
-    theta_a=np.ones((p,K+4))
-    theta_a[0,:K+2]=np.exp(np.random.uniform(0,loga_max,size=K+2))-1
-    theta_a[0,-2:]=np.exp(np.random.uniform(-logb_max,logb_max,size=2))
-    
-    theta_d = theta_a.copy() 
-    theta_d[0,0] -= theta_d[0,-4]
-    theta_d[0,1:K] -= theta_a[0,0:(K-1)]
-    theta_d[0,-3] = theta_d[0,-3]*theta_d[0,-1]/theta_d[0,-2] - theta_d[0,-4]  # eta = zeta * s_0 - u_0
-    
-    #Y_a = get_y_a(theta_a[0], t, tau)
-    #Y_d = get_y_delta(theta_d[0], t, tau)
-
-
-    print(np.max(Y_a-Y_d))
-    #print(np.max(Y-y))
-    """
 #%% check jac function
-    np.random.seed(42)
-    topo = np.array([[0]])
-    tau=(0,1)
+    np.random.seed(2023)
+    topo = np.array([[0,1,2,3]])
+    tau=(0,1,2,3)
     n = 1000
     p = 1
     K=len(tau)-1
-    t=np.linspace(0, 1, n)
+    L=len(topo)
+    n_states=len(set(topo.flatten()))
+    t=np.linspace(tau[0], tau[-1], n)
     
     loga_max=4
-    logb_max=2
+    logb_mu=1
+    logb_var=1
     
-    theta=np.ones((p,K+5))
-    theta[0,:K+2]=np.exp(np.random.uniform(0,loga_max,size=K+2))-1
-    theta[0,-3:]=np.exp(np.random.uniform(-logb_max,logb_max,size=3))
+    ### change this when changing models ###
+    from two_species_ss_tau import check_params, guess_theta, get_Y_hat, get_logL, update_theta_j, neglogL, neglogL_jac
+    theta=np.ones((p,n_states+K+1))
+    theta[:,:n_states]=np.exp(np.random.uniform(0,loga_max,size=(p,n_states)))-1
+    theta[:,n_states:(n_states+K-1)]=tau[1:-1]
+    #theta[:,-3]=np.exp(np.random.uniform(0,loga_max,size=p))-1
+    theta[:,-2:]=np.exp(np.random.normal(logb_mu,logb_var,size=(p,2)))
+    ### change this when changing models ###
     
-    Y = two_species_relative.get_y(theta[0], t, tau)
-
-    X = np.random.poisson(Y)
-    X = np.random.poisson(X)
-    x = X
-    Q = np.diag(np.ones(n))/n
-    Q = Q[:,None,:]
-    n,L,m = Q.shape
+    Y_ = get_Y_hat(theta, t, tau, topo, {})[0]
+    
+    X = np.random.poisson(Y_)
+    
+    x = X[:,0]
+    
+    m=100
+    t_grids = np.linspace(tau[0], tau[-1], m)
+    Q = np.zeros((n,L,m))
+    for l in range(L):
+        for i in range(n):
+            Q[i+n*l,l,int(t[i]/tau[-1]*(m-1))] = 1
+    
+    Q=Q/Q.sum(axis=(1,2),keepdims=True)
     x_weighted = np.zeros((L,m,2))
     marginal_weight = np.zeros((L,m,1))
+    
     for l in range(len(topo)):
-        weight_l = Q[:,l,:] #n*m
-        x_weighted[l] = weight_l.T@x # m*2
-        marginal_weight[l] =  weight_l.sum(axis=0)[:,None] # m*1
-        
-    
-    theta0 = np.ones(K+5)
-    theta0[0:-4]=np.mean(X[:,0])
-    theta0[-4]=np.mean(X[:,1])
-    theta0[-3]=1
-    theta0[-2]=np.mean(X[:,0])/np.mean(X[:,1])
-    
-    #check_grad(two_species.neglogL, two_species.neglogL_jac, theta[0,:-1], x_weighted, marginal_weight, t, tau, topo)
-    check_grad(two_species_relative.neglogL, two_species_relative.neglogL_jac, theta[0], x_weighted, marginal_weight, t, tau, topo)
-    #approx_fprime(theta0[:-1], two_species.neglogL, 1e-100, x_weighted, marginal_weight, t, tau, topo)
-    #two_species.neglogL_jac(theta0[:-1], x_weighted, marginal_weight, t, tau, topo)
-    
-    res = two_species_relative.update_theta_j(theta0, X, Q, t, tau, topo, miter = 10000)
-    res2 = two_species.update_theta_j(theta0[:-1], X, Q, t, tau, topo, miter = 100000)
+        weight_l = Q[:,l,:]/n #n*m
+        x_weighted[l] = weight_l.T@x # m*2 = m*n @ n*2
+        marginal_weight[l] = weight_l.sum(axis=0)[:,None] # m*1
 
-        
-    Y_fit = two_species_relative.get_y(res, t, tau)
-    plt.figure()
-    plt.scatter(X[:,0],X[:,1],c='gray');
-    plt.scatter(Y[:,0],Y[:,1],c="red");
-    plt.scatter(Y_fit[:,0],Y_fit[:,1],c=t,cmap='Spectral');
-    plt.title("two_species_relative")
-
-    Y_fit_a = two_species.get_y(res2, t, tau)
-    plt.figure()
-    plt.scatter(X[:,0],X[:,1],c='gray');
-    plt.scatter(Y[:,0],Y[:,1],c="red");
-    plt.scatter(Y_fit_a[:,0],Y_fit_a[:,1],c=t,cmap='Spectral');
-    plt.title("two_species")
+    theta0 = guess_theta(X,topo,tau)
+    print(theta[0])
+    print(update_theta_j(theta0[0],x,Q,t_grids,tau,topo,params={"lambda_a":0},restrictions=None))
+    #print(update_theta_j(theta0[0],x,Q,t_grids,tau,topo,params={"lambda_a":1e-4,"lambda_tau":1},restrictions=[[3],[2]]))
+    print(check_grad(neglogL, neglogL_jac, theta[0], x_weighted, marginal_weight, t_grids, tau, topo, 0))
+    approx_fprime(theta[0], neglogL, 1e-10, x_weighted, marginal_weight, t_grids, tau, topo, 1)
+    neglogL_jac(theta[0], x_weighted, marginal_weight, t_grids, tau, topo, 1)
+    
+#%%
    
     """
     #%% jac function debug

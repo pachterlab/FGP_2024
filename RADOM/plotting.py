@@ -13,6 +13,14 @@ cmap_ts = ['Blues', 'Reds', 'Purples', 'Greens']
 #cmap_ts = [cmr.get_sub_cmap('Blues', 0.2, 1), cmr.get_sub_cmap('Reds', 0.2, 1),cmr.get_sub_cmap('Purples', 0.2, 1), cmr.get_sub_cmap('Greens', 0.2, 1)]
 label_font =24
       
+def R2(y_pred, y_true):
+    # R squared
+    SS_Res = np.sum((y_pred - y_true)**2)
+    SS_Total = np.sum((y_pred - y_pred.mean())**2)
+    
+    return 1 - SS_Resc / SS_Total
+
+
 def CCC(y_pred, y_true):
     # Pearson product-moment correlation coefficients
     cor = np.corrcoef(y_true, y_pred)[0][1]
@@ -60,10 +68,10 @@ def getJaccard(x1, x2, n_neigh=100):
         frac[i] = 1-len(inter)/len(union)
     return frac
 
-def plot_t(traj,Q=None,l=0,ax=None,t=None,order_cells=False):
+def plot_t(traj,Q=None,l=0,ax=None,t=None,order_cells=False,measure="R2"):
     if Q is None:
         Q = traj.Q
-    t_hat=Q[:,l]@traj.t
+    t_hat=Q.sum(1)@traj.t
     if ax is None:
         fig, ax = plt.subplots(1,1)
     if t is not None:
@@ -72,7 +80,11 @@ def plot_t(traj,Q=None,l=0,ax=None,t=None,order_cells=False):
         else:
             order=np.arange(len(t))
         im = ax.imshow(Q[order,l,:],aspect="auto",cmap=cmap_Q);
-        ax.text(0.9, 0.9, "CCC="+str(np.around(CCC(t_hat,t))), horizontalalignment='right', 
+        if measure=="R2":
+            ax.text(0.9, 0.9, r"$R^2$="+str(np.around(CCC(t_hat,t),3)), horizontalalignment='right', 
+                 verticalalignment='top', transform=ax.transAxes, color="black",fontsize=24);
+        elif measure=="CCC":
+            ax.text(0.9, 0.9, "CCC="+str(np.around(CCC(t_hat,t),3)), horizontalalignment='right', 
                  verticalalignment='top', transform=ax.transAxes, color="black",fontsize=24);
     else:
         if order_cells:
@@ -92,7 +104,7 @@ def plot_theta(theta,theta_hat,dot_color='grey'):
     for i in range(n_theta):
         ax[i].plot(theta[:,i],theta[:,i],color='black');
         ax[i].plot(theta[:,i],theta_hat[:,i],'.',color='tab:red');
-        ax[i].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,i],theta[:,i]),2)), horizontalalignment='right', 
+        ax[i].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,i],theta[:,i]),3)), horizontalalignment='right', 
                  verticalalignment='top', transform=ax[i].transAxes, color="black",fontsize=24);
         ax[i].set_title("a"+str(i+1))
         ax[i].set_xlabel("true values")
@@ -119,7 +131,7 @@ def plot_theta_1(theta,theta_hat):
     for i in range(n_theta):
         ax[i].plot(1+theta[:,i],1+theta[:,i],color='black');
         ax[i].plot(1+theta[:,i],1+theta_hat[:,i],'.',color='tab:red');
-        ax[i].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,i],theta[:,i]),1)), horizontalalignment='right', 
+        ax[i].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,i],theta[:,i]),3)), horizontalalignment='right', 
                  verticalalignment='top', transform=ax[i].transAxes, color="black",fontsize=24);
         ax[i].set_title("a"+str(i+1))
         ax[i].set_xlabel("true values + 1")
