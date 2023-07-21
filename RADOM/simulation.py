@@ -10,74 +10,66 @@ from math import log
 import numpy as np
 import anndata as ad 
 from importlib import import_module
-import RADOM.models.two_species_ss as tss
-import RADOM.models.two_species as ts
+import RADOM.models.two_species_ss as two_species_ss
+import RADOM.models.two_species_ss_tau as two_species_ss_tau
 
-def simulate_data(topo, tau, n, p, model="two_species", loga_mu=2, loga_sd=1, logb_mu=1, logb_sd=0.5, Er=0, rd_var=0, logu_mu=0, logu_sd=0, random_seed=2023, loomfilepath=None):    
+def simulate_data(topo, tau, n, p, model="two_species_ss", loga_mu=2, loga_sd=1, logb_mu=1, logb_sd=0.5, rd_mu=0.25, rd_var=0, logu_mu=0, logu_sd=0, random_seed=42):    
     np.random.seed(random_seed)
     L=len(topo)
+    K=len(tau)-1
     n_states=len(set(topo.flatten()))
-    t=np.linspace(tau[0],tau[-1],n)
     true_t = []
+    t_samples=np.random.uniform(tau[0],tau[-1],size=100*n)
     
-    if model == "two_species":
-        theta=np.zeros((p,n_states+3))
-        for j in range(n_states):
-            theta[:,j]=np.random.lognormal(loga_mu, loga_sd, size=p)
-        theta[:,-2:]=np.random.lognormal(logb_mu,logb_sd,size=(p,2))
-        theta[:,:n_states]/=theta[:,-2,None]
-        theta[:,-3]=np.random.lognormal(loga_mu, loga_sd, size=p)/theta[:,-1]
-        
-        Y = np.zeros((n*L,p,2))
-        for l in range(L):
-            theta_l = np.concatenate((theta[:,topo[l]], theta[:,-3:]), axis=1)
-            Y[l*n:(l+1)*n] = ts.get_Y(theta_l,t,tau) # m*p*2
-            true_t = np.append(true_t,t)
-            
-    elif model == "two_species_ss":
+    if model == "two_species_ss":
         theta=np.zeros((p,n_states+2))
         for j in range(n_states):
             theta[:,j]=np.random.lognormal(loga_mu, loga_sd,size=p)
         theta[:,-2:]=np.random.lognormal(logb_mu,logb_sd,size=(p,2))
         theta[:,:n_states]/=theta[:,-2,None]
+        theta[:,-1]/=np.exp(2)
         
         Y = np.zeros((n*L,p,2))
         for l in range(L):
             theta_l = np.concatenate((theta[:,topo[l]], theta[:,-2:]), axis=1)
-            Y[l*n:(l+1)*n] = tss.get_Y(theta_l,t,tau) # m*p*2
+            t = np.sort(np.random.choice(t_samples,size=n))
+            Y[l*n:(l+1)*n] = two_species_ss.get_Y(theta_l,t,tau) # m*p*2
+            true_t = np.append(true_t,t)
+            
+    elif model == "two_species_ss_tau":
+        theta=np.zeros((p,n_states+2+K))
+        for j in range(n_states):
+            theta[:,j]=np.random.lognormal(loga_mu, loga_sd,size=p)
+        theta[:,-2:]=np.random.lognormal(logb_mu,logb_sd,size=(p,2))
+        theta[:,:n_states]/=theta[:,-2,None]
+        theta[:,-1]/=np.exp(2)
+        theta[:,n_states:-2]=np.abs(tau[None,:-1]+np.random.uniform(0,0.5,size=(p,K)))
+        
+        Y = np.zeros((n*L,p,2))
+        for l in range(L):
+            theta_l = np.concatenate((theta[:,topo[l]], theta[:,n_states:]), axis=1)
+            t = np.sort(np.random.choice(t_samples,size=n))
+            Y[l*n:(l+1)*n] = two_species_ss_tau.get_Y(theta_l,t,tau) # m*p*2
             true_t = np.append(true_t,t)
     else:
         raise ValueError('model not implemented')
         
-    if logu_sd > 0:
+    if logu_sd != 0:
         Ubias = np.random.lognormal(logu_mu,logu_sd,p)
+        Y[:,:,0] *= Ubias[None,:]
     else:
         Ubias = np.ones(p)*np.exp(logu_mu)
-    Y[:,:,0] *= Ubias[None,:]
         
-    if Er > 0:
-        Z = Er*np.random.poisson(Y/Er)
+    if rd_var != 0:
+        a = (1-rd_mu)/rd_var - rd_mu
+        b = (1/rd_mu-1)*a
+        rd = np.random.beta(a=a, b=b, size=n*L)             
     else:
-        Z = Y.copy()
-    
-    if rd_var > 0:
-        read_depth = np.random.gamma(1/rd_var,rd_var,n*L)
-        rd = read_depth/read_depth.mean()
-    else:
-        rd = np.ones(n*L)
-    X = np.random.poisson(rd[:,None,None]*Z)  
-    
-    if loomfilepath is not None:
-        adata=ad.AnnData(np.sum(X,axis=-1))
-        adata.layers["spliced"] = X[:,:,1]
-        adata.layers["unspliced"] = X[:,:,0]
-        adata.layers["ambiguous"]=np.zeros_like(X[:,:,0])
-        adata.obs["time"]=true_t
-        adata.obs["celltype"]=np.arange(n*L)//n
-        adata.uns["theta"]=theta
-        adata.var["true_beta"]=theta[:,-2]
-        adata.var["true_gamma"]=theta[:,-1]
-        adata.write_loom(loomfilepath)
+        rd = np.ones(n*L) * rd_mu 
+        
+    Y *= rd[:,None,None]          
+    X = np.random.poisson(Y)  
+
     return theta, true_t, Y, X, Ubias, rd
 
 # Simulations

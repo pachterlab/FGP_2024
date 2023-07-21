@@ -18,7 +18,7 @@ def R2(y_pred, y_true):
     SS_Res = np.sum((y_pred - y_true)**2)
     SS_Total = np.sum((y_pred - y_pred.mean())**2)
     
-    return 1 - SS_Resc / SS_Total
+    return 1 - SS_Res / SS_Total
 
 
 def CCC(y_pred, y_true):
@@ -81,7 +81,7 @@ def plot_t(traj,Q=None,l=0,ax=None,t=None,order_cells=False,measure="R2"):
             order=np.arange(len(t))
         im = ax.imshow(Q[order,l,:],aspect="auto",cmap=cmap_Q);
         if measure=="R2":
-            ax.text(0.9, 0.9, r"$R^2$="+str(np.around(CCC(t_hat,t),3)), horizontalalignment='right', 
+            ax.text(0.9, 0.9, r"$R^2$="+str(np.around(R2(t_hat,t),3)), horizontalalignment='right', 
                  verticalalignment='top', transform=ax.transAxes, color="black",fontsize=24);
         elif measure=="CCC":
             ax.text(0.9, 0.9, "CCC="+str(np.around(CCC(t_hat,t),3)), horizontalalignment='right', 
@@ -104,9 +104,9 @@ def plot_theta(theta,theta_hat,dot_color='grey'):
     for i in range(n_theta):
         ax[i].plot(theta[:,i],theta[:,i],color='black');
         ax[i].plot(theta[:,i],theta_hat[:,i],'.',color='tab:red');
-        ax[i].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,i],theta[:,i]),3)), horizontalalignment='right', 
+        ax[i].text(0.9, 0.2, "R2="+str(np.around(R2(theta_hat[:,i],theta[:,i]),3)), horizontalalignment='right', 
                  verticalalignment='top', transform=ax[i].transAxes, color="black",fontsize=24);
-        ax[i].set_title("a"+str(i+1))
+        ax[i].set_title("a"+str(i))
         ax[i].set_xlabel("true values")
         ax[i].set_xscale('log')
         ax[i].set_yscale('log')
@@ -123,7 +123,7 @@ def plot_theta(theta,theta_hat,dot_color='grey'):
     
     return fig,ax
     
-def plot_theta_1(theta,theta_hat):
+def plot_theta_1p(theta,theta_hat):
     n_theta = theta.shape[1]
     assert theta_hat.shape[1] == n_theta
     fig, ax = plt.subplots(1,n_theta,figsize=(6*n_theta,5))
@@ -131,7 +131,7 @@ def plot_theta_1(theta,theta_hat):
     for i in range(n_theta):
         ax[i].plot(1+theta[:,i],1+theta[:,i],color='black');
         ax[i].plot(1+theta[:,i],1+theta_hat[:,i],'.',color='tab:red');
-        ax[i].text(0.9, 0.2, "CCC="+str(np.around(CCC(theta_hat[:,i],theta[:,i]),3)), horizontalalignment='right', 
+        ax[i].text(0.9, 0.2, "R2="+str(np.around(R2(theta_hat[:,i],theta[:,i]),3)), horizontalalignment='right', 
                  verticalalignment='top', transform=ax[i].transAxes, color="black",fontsize=24);
         ax[i].set_title("a"+str(i+1))
         ax[i].set_xlabel("true values + 1")
