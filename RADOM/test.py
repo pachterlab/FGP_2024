@@ -4,16 +4,18 @@ import copy
 from RADOM.inference import Trajectory
 from RADOM.simulation import simulate_data
 from RADOM.plotting import plot_phase, plot_t, plot_theta
+from RADOM.mixtures import PoissonMixtureSS
     
-    
-if __name__ == '__main__':
-    #%%    
+if __name__ == '__main__':    
     topo = np.array([[0,1,2]])
-    tau=(0,1,2)
-    n = 2000
-    p = 200
-    true_theta, true_t, Y, X, Ubias, rd = simulate_data(topo, tau, n, p, model="two_species_ss",logu_mu=-2,logu_sd=1,random_seed=2019)
-    
+    tau=np.array([0,1,2],dtype=float)
+    n_states = len(set(topo.flatten()))
+    n = 1000
+    p = 100
+    true_theta, true_t, Y, X, Ubias, rd = simulate_data(topo, tau, n, p, model="two_species_ss_tau")
+    true_theta[:,:n_states] *= rd.mean()
+    #plt.hist(true_theta[:,2])
+
     plot_p = min(10, p)
     fig, ax = plt.subplots(1,plot_p,figsize=(6*plot_p,4))
     for i in range(plot_p):
@@ -21,32 +23,51 @@ if __name__ == '__main__':
         ax[i].scatter(X[:,j,0],X[:,j,1],c="gray");
         ax[i].scatter(Y[:,j,0],Y[:,j,1],c=true_t);
         ax[i].set_title(j)
-       
+        
+
+
+#%%
     ##### fit with correct Q0 #####
     L = len(topo)
-    resol = 10
-    m = n//resol
+    resol = 100
+    m = int(tau[-1]*resol)+1
     Q0 = np.zeros((L*n,L,m))
     for l in range(L):
         for i in range(n):
-            Q0[i+n*l,l,i//resol] = 1
+            Q0[i+n*l,l,int(true_t[i+n*l]*resol)] = 1
     #Q0 = np.random.uniform(0,1,size=Q0.shape)
     Q0 /= Q0.sum(axis=(-2,-1),keepdims=True)
     
     ##### fit with correct theta0 #####
     r = X.mean(axis=(1,2))/X.mean()   
+    params = {"r":rd/rd.mean(),"miter":1000,'lambda_tau':0,'lambda_a':0}
+    traj1 = Trajectory(topo, tau, model="two_species_ss",verbose=2)
+    traj1 = traj1.fit(X, warm_start=False, fit_tau=True, norm_Q=True, m=100, Q=Q0, params=params, n_init=10, epoch=10)#, parallel=True, n_threads=4)
+    plot_t(traj1,t=true_t)
+    plot_phase(traj1,idx=[31])
+    
+    traj2 = Trajectory(topo,tau,model="two_species_ss_tau",verbose=2)
+    traj2 = traj2.fit(X, warm_start=False, fit_tau=True, norm_Q=True, m=100, Q=Q0, params=params, n_init=10, epoch=10)#, parallel=True, n_threads=4)
+    plot_t(traj2,t=true_t)
+    plot_theta(traj1.theta[:,[0,1,-2,-1]],traj2.theta[:,[0,1,-2,-1]])
+    plot_theta(true_theta,traj2.theta)
+    plot_phase(traj2,idx=[31])
+    
+    traj_true = Trajectory(topo, tau, model="two_species_ss_tau",verbose=1)
+    traj_true = traj_true.fit(X, warm_start=True, fit_tau=False, m=100, theta=true_theta.copy(), params=params, n_init=10, epoch=0)#, parallel=True, n_threads=4)
+    
+    plt.axhline(traj_true.elbos[0],color='gray')
+    n_best = np.argmax([traj2.elbos[i][-1] for i in range(len(traj2.elbos))])
+    plt.plot(traj2.elbos[n_best],'r.')
+    plt.plot(traj2.elbos,'k.')
+    plot_phase(traj_true,idx=[31])
+    
+#%%  
     params = {"r":rd,'Ub':Ubias,"miter":1000}
-    traj1 = Trajectory(topo, tau, model="two_species_ss",verbose=1)
-    traj1 = traj1.fit(X, warm_start=True, fit_tau=False, m=100, theta=true_theta.copy(), params=params, n_init=10, epoch=3)#, parallel=True, n_threads=4)
-    
-    traj_true = Trajectory(topo, tau, model="two_species_ss",verbose=1)
-    traj_true = traj_true.fit(X, warm_start=True, m=100, theta=true_theta.copy(), params=params, n_init=10, epoch=0)#, parallel=True, n_threads=4)
-    
-    params = {"r":rd,'Ub':Ubias,"batch_size":2000,"miter":1000}
     traj = Trajectory(topo, tau, model="two_species_ss",verbose=1)
     traj = traj.fit(X, warm_start=True, fit_tau=False, theta=true_theta.copy(), params=params, n_init=10, epoch=3)#, parallel=True, n_threads=4)
     
-    plt.plot(traj1.elbos,'b.')
+    
     #plt.plot(traj.elbos,'r+')
     plt.axhline(y=traj_true.elbos[0],color='gray')
     

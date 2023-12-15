@@ -1,5 +1,24 @@
-__version__ = "2023.05.13.12"
+from .inference import *
+from .mixtures import *
+from .plotting import *
+from .utils import *
+from .simulation import *
 
+
+__version__ = "2023.09.01"
+
+# 2023.09.01: add compute_gene_logL
+# 2023.08.16: change init_Q by removing one added
+# 2023.08.14: change initial beta and gamma to ratio and one
+# 2023.07.31: corrected PMSS: added update weights
+# 2023.07.26: change initial beta and gamma back to before
+# 2023.07.25: change initial beta and gamma,
+#             change default fit_global_tau to False with tau model,
+#             return to old normalize_Q but include weights
+# 2023.07.24: store all Q
+# 2023.07.21: modified two_species_ss_tau,
+#                added PoissonMixtureSS, 
+#                and modified other files
 # 2023.05.13.12: add gene idx and use params to store all parameters for update_theta_j 
 # 2023.05.08.08: CCC --> R2
 # 2023.05.07.08: change to update global tau after 10 epoch

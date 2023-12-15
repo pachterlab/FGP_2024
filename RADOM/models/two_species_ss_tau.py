@@ -19,36 +19,33 @@ from scipy.special import gammaln
 eps = 1e-10
 
 def check_params(traj):
-    assert len(traj.tau) == len(traj.topo[0])
-    if len(traj.tau)<=2:
-        print("no variable tau needed, use two_species_ss instead")
-    return
+    pass
 
 def guess_theta(X,topo,tau):
     n_state=len(set(topo.flatten()))
     K = len(tau)-1
     p = X.shape[1]
-    theta = np.zeros((p,n_state+K+1))
+    theta = np.zeros((p,n_state+K+2))
     theta[:,0:n_state] = np.mean(X[:,:,0],axis=0)[:,None]
-    theta[:,n_state:-2] = tau[1:-1]
-    theta[:,-2] = np.sqrt(np.mean(X[:,:,1],axis=0)/(np.mean(X[:,:,0],axis=0)+eps))
-    theta[:,-1] = np.sqrt(np.mean(X[:,:,0],axis=0)/(np.mean(X[:,:,1],axis=0)+eps))
+    theta[:,n_state:-2] = tau[:-1]
+    theta[:,-2] = np.mean(X[:,:,1],axis=0)/(np.mean(X[:,:,0],axis=0)+eps)
+    theta[:,-1] = 1 #np.sqrt(np.mean(X[:,:,0],axis=0)/(np.mean(X[:,:,1],axis=0)+eps))
     return theta
 
 
-def get_y(theta, t, global_tau):
-    # theta: a_1, ..., a_K, u_0, s_0, beta, gamma
+def get_y(theta, t, tau):
+    # K switches
+    # theta: a_0,a_1, ..., a_K, tau_0,...,tau_K,-1 beta, gamma
     # t: len m
     # tau: len K+1
     # return m * p * 2
-    K = len(global_tau)-1 # number of states
-    assert len(theta) == 2*K+2
+    K = len(tau)-1 # number of states
+    assert len(theta) == 2*K+3
     y1_0 = theta[0]
     a = theta[1:K+1]
-    tau = np.zeros(K+1)
-    tau[0]=global_tau[0]
-    tau[-1]=global_tau[-1]
-    tau[1:-1]=theta[K+1:-2]
+    tau_ = np.zeros(K+1)
+    tau_[-1]=tau[-1]
+    tau_[:-1]=theta[K+1:-2]
     beta = theta[-2]
     gamma = theta[-1]
     if beta == gamma:
@@ -62,17 +59,13 @@ def get_y(theta, t, global_tau):
     m = len(t)
   
     I = np.ones((K+1,m),dtype=bool)
-
-    # nascent
-    y1=y1_0*np.exp(-t*beta)
-    y=y_0*np.exp(-t*gamma)   
+    I[0] = np.squeeze(t > tau_[0])
+    y1=y1_0*np.exp(-(I[0]*(t-tau_[0]))*beta)
+    y=y_0*np.exp(-(I[0]*(t-tau_[0]))*gamma)   
     for k in range(1,K+1):
-        I[k] = np.squeeze(t > tau[k])
-        idx = I[k-1]*(~I[k]) # tau_{k-1} < t_i <= tau_k
-        y1 += a[k-1] * (np.exp(- (I[k] *(t-tau[k]))*beta)- np.exp(-(I[k]*(t-tau[k-1]))*beta )) \
-          + a[k-1] * (1 - np.exp(- (idx *(t-tau[k-1]))*beta ) )
-        y += a_[k-1] * (np.exp(-(I[k] * (t-tau[k]))*gamma)- np.exp(-(I[k] * (t-tau[k-1]))*gamma )) \
-          +  a_[k-1] * (1 - np.exp(-(idx*(t-tau[k-1]))*gamma) )
+        I[k] = np.squeeze(t > tau_[k])
+        y1 += a[k-1] * (np.exp(- (I[k] *(t-tau_[k]))*beta)- np.exp(-(I[k-1]*(t-tau_[k-1]))*beta )) 
+        y += a_[k-1] * (np.exp(-(I[k] * (t-tau_[k]))*gamma)- np.exp(-(I[k-1] * (t-tau_[k-1]))*gamma )) 
 
     Y = np.zeros((m,2))
     Y[:,0] = y1
@@ -85,18 +78,17 @@ def get_y(theta, t, global_tau):
     return Y
 
 def get_y_jac(theta, t, tau):
-    # theta: u_0, a_1, ..., a_K, tau_1, tau_K-1, beta, gamma
+    # theta: u_0, a_1, ..., a_K, tau_0, tau_1, tau_K-1, beta, gamma
     # t: len m
     # tau: len K+1
     # return m * p * 2
     K = len(tau)-1 # number of states
-    assert len(theta) == 2*K+2
+    assert len(theta) == 2*K+3
     y1_0 = theta[0]
     a = theta[1:K+1]
     tau_ = np.zeros(K+1)
-    tau_[0]=tau[0]
     tau_[-1]=tau[-1]
-    tau_[1:-1]=theta[K+1:-2]
+    tau_[:-1]=theta[K+1:-2]
     beta = theta[-2]
     gamma = theta[-1]
 
@@ -111,28 +103,26 @@ def get_y_jac(theta, t, tau):
     da__dbeta = a * dd_dbeta
     da__dgamma = a * dd_dgamma
 
-    
     m = len(t)
     I = np.ones((K+1,m),dtype=bool)
     dY_dtheta = np.zeros((m,2,len(theta)))
     
-    # nascent
-    y1=y1_0*np.exp(-t*beta)
-    y=y_0*np.exp(-t*gamma)
-    dY_dtheta[:,0,0] = np.exp(-t*beta)
-    dY_dtheta[:,1,0] = d * np.exp(-t*gamma) 
+    I[0] = np.squeeze(t > tau_[0])
+    y1=y1_0*np.exp(-(t-tau_[0])*I[0]*beta)
+    y=y_0*np.exp(-(t-tau_[0])*I[0]*gamma)   
     
+    dY_dtheta[:,0,0] = np.exp(-(t-tau_[0])*I[0]*beta)
+    dY_dtheta[:,1,0] = d * np.exp(-(t-tau_[0])*I[0]*gamma)   
     
-    dY_dtheta[:,0,-2] = - t * y1_0 * np.exp(-t*beta)
-    dY_dtheta[:,1,-2] = dd_dbeta * y1_0 * np.exp(-t*gamma)
-    dY_dtheta[:,1,-1] = dd_dgamma * y1_0 * np.exp(-t*gamma)  - t * y_0 * np.exp(-t*gamma)
+    dY_dtheta[:,0,-2] = -(I[0]*(t-tau_[0]))*y1_0*np.exp(-(I[0]*(t-tau_[0]))*beta)
+    dY_dtheta[:,1,-2] = dd_dbeta * y1_0 * np.exp(-(I[0]*(t-tau_[0]))*gamma) 
+    dY_dtheta[:,1,-1] = dd_dgamma * y1_0 * np.exp(-(I[0]*(t-tau_[0]))*gamma) - y_0 * I[0]*(t-tau_[0]) * np.exp(-(t-tau_[0])*I[0]*gamma)   
     
     for k in range(1,K+1):
         I[k] = np.squeeze(t > tau_[k])
-        idx =I[k-1]*(~I[k]) # tau_{k-1} < t_i <= tau_k
         
-        y1_a_k_coef = np.exp(- (I[k] *(t-tau_[k]))*beta) - np.exp(-(I[k] * (t-tau_[k-1])) * beta ) + 1 - np.exp(- (idx * (t-tau_[k-1]))*beta ) 
-        y_a_k_coef = np.exp(- (I[k] * (t-tau_[k]))*gamma) - np.exp(-(I[k] * (t-tau_[k-1])) * gamma) + 1 - np.exp(- (idx * (t-tau_[k-1]))*gamma)
+        y1_a_k_coef = np.exp(- (I[k] *(t-tau_[k]))*beta) - np.exp(-(I[k-1] * (t-tau_[k-1])) * beta ) 
+        y_a_k_coef = np.exp(- (I[k] * (t-tau_[k]))*gamma) - np.exp(-(I[k-1] * (t-tau_[k-1])) * gamma)
 
         y1 += a[k-1] *  y1_a_k_coef
         y += a_[k-1] * y_a_k_coef
@@ -140,16 +130,18 @@ def get_y_jac(theta, t, tau):
         dY_dtheta[:,0,k] = y1_a_k_coef
         dY_dtheta[:,1,k] = d * y_a_k_coef
         
-        dy1_a_k_coef_dbeta = - (t-tau_[k]) * I[k] * np.exp(- (I[k] * (t-tau_[k])) * beta) + (t-tau_[k-1]) * I[k] * np.exp(-(I[k] * (t-tau_[k-1])) * beta ) +  idx * (t-tau_[k-1]) * np.exp(- (idx * (t-tau_[k-1])) * beta)
-        dy_a_k_coef_dgamma = - (t-tau_[k]) * I[k] * np.exp(- (I[k] * (t-tau_[k])) * gamma) + (t-tau_[k-1]) * I[k] * np.exp(-(I[k] * (t-tau_[k-1])) * gamma ) + idx * (t-tau_[k-1]) * np.exp(- (idx * (t-tau_[k-1])) * gamma) 
+        dy1_a_k_coef_dbeta = - (t-tau_[k]) * I[k] * np.exp(- (I[k] * (t-tau_[k])) * beta) + (t-tau_[k-1]) * I[k-1] * np.exp(-(I[k-1] * (t-tau_[k-1])) * beta ) 
+        dy_a_k_coef_dgamma = - (t-tau_[k]) * I[k] * np.exp(- (I[k] * (t-tau_[k])) * gamma) + (t-tau_[k-1]) * I[k-1] * np.exp(-(I[k-1] * (t-tau_[k-1])) * gamma ) 
         
         dY_dtheta[:,0,-2] += a[k-1] * dy1_a_k_coef_dbeta
         dY_dtheta[:,1,-2] += da__dbeta[k-1] * y_a_k_coef
         dY_dtheta[:,1,-1] += da__dgamma[k-1] * y_a_k_coef + a_[k-1] * dy_a_k_coef_dgamma
     
+    dY_dtheta[:,0,K+1] += I[0]* (y1_0-a[0]) * beta * np.exp(- (I[0] * (t-tau_[0])) * beta)
+    dY_dtheta[:,1,K+1] += I[0]* (y_0-a_[0]) * gamma * np.exp(- (I[0] * (t-tau_[0])) * gamma)
     for k in range(1,K):
-        dY_dtheta[:,0,K+k] += I[k]* (a[k-1]-a[k]) * beta * np.exp(- (I[k] * (t-tau_[k])) * beta)
-        dY_dtheta[:,1,K+k] += I[k]* (a_[k-1]-a_[k]) * gamma * np.exp(- (I[k] * (t-tau_[k])) * gamma)
+        dY_dtheta[:,0,K+k+1] += I[k]* (a[k-1]-a[k]) * beta * np.exp(- (I[k] * (t-tau_[k])) * beta)
+        dY_dtheta[:,1,K+k+1] += I[k]* (a_[k-1]-a_[k]) * gamma * np.exp(- (I[k] * (t-tau_[k])) * gamma)
         
     Y = np.zeros((m,2))
     Y[:,0] = y1
@@ -176,15 +168,13 @@ def get_Y(theta, t, tau):
     # return m * p * 2
     p = len(theta)
     K = len(tau)-1 # number of states
-    assert np.shape(theta)[1] == 2*K+2, f"theta ({np.shape(theta)[1]}) and tau ({K+1}) are not compatible"
+    assert np.shape(theta)[1] == 2*K+3, f"theta ({np.shape(theta)[1]}) and tau ({K+1}) are not compatible"
     a = theta[:,1:K+1].T
     tau_ = np.zeros((K+1,1,p))
-    tau_[0,0,:] = tau[0]
-    tau_[1:-1,0,:] = theta[:,K+1:-2].T
+    tau_[:-1,0,:] = theta[:,K+1:-2].T
     tau_[-1,0,:] = tau[-1]
     beta = theta[:,-2].reshape((1,-1))
     gamma = theta[:,-1].reshape((1,-1))
-    
     y1_0 = theta[:,0].reshape((1,-1))
 
     c = beta/(beta-gamma+eps)
@@ -195,22 +185,13 @@ def get_Y(theta, t, tau):
     m = len(t)
   
     I = np.ones((K+1,m,p),dtype=bool)
-
-    # nascent
-    y1=y1_0*np.exp(-t@beta)
+    I[0] = t > tau_[0]
+    y1=y1_0*np.exp(-(t-tau_[0])*I[0]*beta)
+    y=y_0*np.exp(-(t-tau_[0])*I[0]*gamma)   
     for k in range(1,K+1):
         I[k] = t > tau_[k]
-        idx = I[k-1]*(~I[k]) # tau_{k-1} < t_i <= tau_k
-        y1 += a[None,k-1] * (np.exp(- (I[k] *(t-tau_[k]))*beta)- np.exp(-(I[k]*(t-tau_[k-1]))*beta )) \
-          + a[None,k-1] * (1 - np.exp(- (idx * (t-tau_[k-1]))*beta ) )
-    if np.sum(np.isnan(y1)) != 0:
-        raise ValueError("Nan in y1")
-    # mature + c * nascent 
-    y=y_0*np.exp(-t@gamma)    
-    for k in range(1,K+1):
-        idx =I[k-1]*(~I[k]) # tau__{k-1} < t_i <= tau__k
-        y = y + a_[None,k-1] * (np.exp(-(I[k] * (t-tau_[k]))*gamma)- np.exp(-(I[k] * (t-tau_[k-1]))*gamma )) \
-          +  a_[None,k-1] * (1 - np.exp(-(idx*(t-tau_[k-1]))*gamma) )
+        y1 += a[None,k-1] * (np.exp(- (I[k] *(t-tau_[k]))*beta)- np.exp(-(I[k-1]*(t-tau_[k-1]))*beta ))
+        y += a_[None,k-1] * (np.exp(-(I[k] * (t-tau_[k]))*gamma)- np.exp(-(I[k-1] * (t-tau_[k-1]))*gamma ))
 
     Y = np.zeros((m,p,2))
     Y[:,:,0] = y1
@@ -237,13 +218,14 @@ def neglogL(theta, x_weighted, marginal_weight, t, tau, topo, Ub, lam_t=0, lam_a
         Y[:,0] *= Ub
         logL += np.sum( x_weighted[l] * np.log(eps + Y) - marginal_weight[l]*Y )
         parents[topo[l][1:]] = topo[l][:-1]
-    penalty_t = np.sum((theta[n_states:-2]-tau[1:-1])**2)
+
+    penalty_t = np.sum((theta[n_states:-2]-tau[:-1])**2)
     penalty_a = np.sum((theta[1:n_states]-theta[parents[1:n_states]])**2)
     return - logL + lam_t * penalty_t + lam_a * penalty_a
 
 def neglogL_a(theta_a, theta_tau, x_weighted, marginal_weight, t, tau, topo, Ub, lam_t=0, lam_a=0):
     theta = np.insert(theta_a,-2,theta_tau)
-    return neglogL(theta, x_weighted, marginal_weight, t, tau, topo, lam_t, lam_a)
+    return neglogL(theta, x_weighted, marginal_weight, t, tau, topo, Ub, lam_t, lam_a)
 
 def neglogL_tau(theta_tau, theta_a, x_weighted, marginal_weight, t, tau, topo, Ub, lam_t=0, lam_a=0):
     theta = np.insert(theta_a,-2,theta_tau)
@@ -263,7 +245,7 @@ def neglogL_jac(theta, x_weighted, marginal_weight, t, tau, topo, Ub, lam_t=0, l
     penalty_t_jac = np.zeros_like(theta)
 
     for l in range(len(topo)):
-        theta_idx = np.append(topo[l],list(range(-K-1,0)))
+        theta_idx = np.append(topo[l],list(range(-K-2,0)))
         theta_l = theta[theta_idx]
         Y, dY_dtheta = get_y_jac(theta_l,t,tau) # m*2*len(theta)
         Y[:,0] *= Ub
@@ -273,7 +255,7 @@ def neglogL_jac(theta, x_weighted, marginal_weight, t, tau, topo, Ub, lam_t=0, l
         parents[topo[l][1:]] = topo[l][:-1]
     penalty_a_jac[1:n_states] = 2*(theta[1:n_states]-theta[parents[1:n_states]])
     penalty_a_jac[parents[1:n_states]] += 2*(theta[parents[1:n_states]] - theta[1:n_states])
-    penalty_t_jac[-(K+1):-2] = 2*(theta[-(K+1):-2]-tau[1:-1])
+    penalty_t_jac[-(K+2):-2] = 2*(theta[-(K+2):-2]-tau[:-1])
     return - jac + lam_t * penalty_t_jac + lam_a * penalty_a_jac
 
 def neglogL_jac_a(theta_a, theta_tau, x_weighted, marginal_weight, t, tau, topo, Ub, lam_t=0, lam_a=0):
@@ -284,37 +266,76 @@ def neglogL_jac_a(theta_a, theta_tau, x_weighted, marginal_weight, t, tau, topo,
 def neglogL_jac_tau(theta_tau, theta_a, x_weighted, marginal_weight, t, tau, topo, Ub, lam_t=0, lam_a=0):
     theta = np.insert(theta_a,-2,theta_tau)
     K = len(tau)-1
-    return neglogL_jac(theta, x_weighted, marginal_weight, t, tau, topo, Ub, lam_t, lam_a)[-(K+1):-2]
+    return neglogL_jac(theta, x_weighted, marginal_weight, t, tau, topo, Ub, lam_t, lam_a)[-(K+2):-2]
 
 def get_Y_hat(theta,t,tau,topo,params):
     L=len(topo)
     m=len(t)
     p=len(theta)
-    K = len(tau)-1
-    Y = np.zeros((L,m,p,2))
-    for l in range(L):
-        theta_l = np.concatenate((theta[:,topo[l]], theta[:,-(K+1):]), axis=1)
-        Y[l] = get_Y(theta_l,t,tau) # m*p*2
-    if "Ub" in params:
-        Y[:,:,:,0] *= params["Ub"][None,None,:]
-    return Y
-
-def get_logL(X,theta,t,tau,topo,params):
-    L=len(topo)
-    m=len(t)
-    p=len(theta)
-    K=len(tau)-1
     n_states=len(set(topo.flatten()))
     parents = np.zeros(n_states,dtype=int)
     Y = np.zeros((L,m,p,2))
     for l in range(L):
-        theta_l = np.concatenate((theta[:,topo[l]], theta[:,-(K+1):]), axis=1)
+        theta_l = np.concatenate((theta[:,topo[l]], theta[:,n_states:]), axis=1)
         Y[l] = get_Y(theta_l,t,tau) # m*p*2
         parents[topo[l][1:]] = topo[l][:-1]
         
     if "Ub" in params:
         Y[:,:,:,0] *= params["Ub"][None,None,:]
+    return Y
+
+def get_Y_hat_jac(theta,t,tau,topo,params):
+    pass
+
+def get_gene_logL(X,theta,t,tau,topo,params):
+    L=len(topo)
+    m=len(t)
+    p=len(theta)
+    n_states=len(set(topo.flatten()))
+    parents = np.zeros(n_states,dtype=int)
+    Y = np.zeros((L,m,p,2))
+    for l in range(L):
+        theta_l = np.concatenate((theta[:,topo[l]], theta[:,n_states:]), axis=1)
+        Y[l] = get_Y(theta_l,t,tau) # m*p*2
+        parents[topo[l][1:]] = topo[l][:-1]
         
+    if "Ub" in params:
+        Y[:,:,:,0] *= params["Ub"][None,None,:]
+    
+    if 'r' in params:
+        r = params['r'] # n
+    else:
+        r = np.one(len(X))
+        
+    logL = np.sum(X[:,None,None,:,:] * np.log(eps + Y)[None,:], axis=-1) # logL:n*L*m*p
+    logL += (np.log(r)[:,None]*np.sum(X,axis=(-1)))[:,None,None,:]
+    logL -= np.sum(r[:,None,None,None,None]*Y[None,:],axis=(-1))
+    logL -= np.sum(gammaln(X+1),axis=(-1))[:,None,None,:]
+    
+    if 'lambda_tau' in params:
+        penalty_t = np.sum((theta[:,n_states:-2]-np.reshape(tau[:-1],(1,-1)))**2,axis=1)
+        logL -= params['lambda_tau'] * penalty_t[None,None,None,:]
+        
+    if 'lambda_a' in params:
+        penalty_a = np.sum((theta[:,1:n_states]-theta[:,parents[1:n_states]])**2,axis=1)
+        logL -= params['lambda_a'] * penalty_a[None,None,None,:]    
+    return logL
+
+def get_logL(X,theta,t,tau,topo,params):
+    L=len(topo)
+    m=len(t)
+    p=len(theta)
+    n_states=len(set(topo.flatten()))
+    parents = np.zeros(n_states,dtype=int)
+    Y = np.zeros((L,m,p,2))
+    for l in range(L):
+        theta_l = np.concatenate((theta[:,topo[l]], theta[:,n_states:]), axis=1)
+        Y[l] = get_Y(theta_l,t,tau) # m*p*2
+        parents[topo[l][1:]] = topo[l][:-1]
+        
+    if "Ub" in params:
+        Y[:,:,:,0] *= params["Ub"][None,None,:]
+    
     logL = np.tensordot(X, np.log(eps + Y), axes=([-2,-1],[-2,-1])) # logL:n*L*m
     logL -= np.sum(Y,axis=(-2,-1))
     logL -= np.sum(gammaln(X+1),axis=(-2,-1),keepdims=True)
@@ -325,7 +346,7 @@ def get_logL(X,theta,t,tau,topo,params):
         logL -= (r[:,None,None]-1)*np.sum(Y,axis=(-2,-1))[None,:]
         
     if 'lambda_tau' in params:
-        penalty_t = np.sum((theta[:,n_states:-2]-np.reshape(tau[1:-1],(1,-1)))**2)
+        penalty_t = np.sum((theta[:,n_states:-2]-np.reshape(tau[:-1],(1,-1)))**2)
         logL -= params['lambda_tau'] * penalty_t
         
     if 'lambda_a' in params:
@@ -377,17 +398,17 @@ def update_theta_j(j, theta0, x, Q, t, tau, topo, params, restrictions=None):
     if 'bnd' in params:
         bnd = params['bnd']
     else:
-        bnd=10000
+        bnd=1000
         
     if 'bnd_beta' in params:
         bnd_beta = params['bnd_beta']
     else:
-        bnd_beta=100000
+        bnd_beta=1000
         
     if "bnd_tau" in params:
         bnd_tau = params["bnd_tau"]
     else:
-        bnd_tau = 0.1 * np.min(np.diff(tau))
+        bnd_tau = 0.5 * np.min(np.diff(tau))
         
     if 'miter' in params:
         miter = params['miter']
@@ -415,9 +436,9 @@ def update_theta_j(j, theta0, x, Q, t, tau, topo, params, restrictions=None):
     theta00 = theta0.copy()
     if np.max(theta00[:n_states]) > np.maximum( np.max(x[:,0]) , np.max(x[:,1]) * theta00[-1] / theta00[-2]):
         theta00[:n_states] = np.sqrt( np.mean(x[:,0]) * np.mean(x[:,1]) * theta00[-1] / theta00[-2])
-    if np.min(np.abs(np.log10(theta00[-2:]))) > 2:
-        theta00[-2] = np.sqrt(np.mean(x[:,1],axis=0)/(np.mean(x[:,0],axis=0)+eps))
-        theta00[-1] = np.sqrt(np.mean(x[:,0],axis=0)/(np.mean(x[:,1],axis=0)+eps))
+    if np.min(np.abs(np.log10(theta00[-2:]))) > 1:
+        theta00[-2] = np.mean(x[:,1],axis=0)/(np.mean(x[:,0],axis=0)+eps)
+        theta00[-1] = 1 #np.sqrt(np.mean(x[:,0],axis=0)/(np.mean(x[:,1],axis=0)+eps))
         
     if "lambda_tau" in params:
         lambda_tau = params['lambda_tau']
@@ -429,14 +450,19 @@ def update_theta_j(j, theta0, x, Q, t, tau, topo, params, restrictions=None):
     else:
         lambda_a = 0
         
-    if restrictions==None:
-        res = update_theta_j_unrestricted_alternative(theta00, x_weighted, marginal_weight, t, tau, topo, Ub, lambda_tau, lambda_a, bnd, bnd_beta, bnd_tau, miter)
+    if "fit_tau" in params:
+        fit_tau = params['fit_tau']
     else:
-        res = update_theta_j_restricted(theta00, x_weighted, marginal_weight, t, tau, topo, restrictions, Ub, lambda_tau, lambda_a, bnd, bnd_beta, bnd_tau, miter)
+        fit_tau = False
+        
+    if restrictions==None:
+        res = update_theta_j_unrestricted_alternative(theta00, x_weighted, marginal_weight, t, tau, topo, Ub, lambda_tau, lambda_a, fit_tau, bnd, bnd_beta, bnd_tau, miter)
+    else:
+        res = update_theta_j_restricted(theta00, x_weighted, marginal_weight, t, tau, topo, restrictions, Ub, lambda_tau, lambda_a, fit_tau, bnd, bnd_beta, bnd_tau, miter)
     return res
 
 
-def update_theta_j_unrestricted_alternative(theta0, x_weighted, marginal_weight, t, tau, topo, Ub, lambda_tau, lambda_a, bnd=1000, bnd_beta=1000, bnd_tau=0.5, miter=1000):
+def update_theta_j_unrestricted_alternative(theta0, x_weighted, marginal_weight, t, tau, topo, Ub, lambda_tau, lambda_a, fit_tau=False, bnd=1000, bnd_beta=1000, bnd_tau=0.5, miter=100):
     """
     with jac
 
@@ -468,34 +494,33 @@ def update_theta_j_unrestricted_alternative(theta0, x_weighted, marginal_weight,
 
     """
     K = len(tau)-1
-    n_state=len(set(topo.flatten()))
+    n_states=len(set(topo.flatten()))
         
-    if K > 1:
-        bound_a = [[0,bnd]]*(n_state+2)
-        bound_a[-2:] = [[1/bnd_beta,bnd_beta]]*2
-        bound_tau = [[tau[0],tau[-1]]]*(K-1)
-        for ii in range(1,K):
-            bound_tau[ii-1] = [max(tau[0],tau[ii]-bnd_tau), min(tau[ii]+bnd_tau,tau[-1])] 
-            
-        a_idx = np.append(list(range(len(set(topo.flatten())))),[-2,-1])
-        theta_a = theta0.copy()[a_idx]
-        theta_tau = theta0.copy()[-K-1:-2]
-
-        for iii in range(10):
+    bound_a = [[0,bnd]]*(n_states+2)
+    bound_a[-2:] = [[1/bnd_beta,bnd_beta]]*2
+    bound_tau = [[tau[0],tau[-1]]]*K
+    for ii in range(K):
+        bound_tau[ii] = [max(tau[0],tau[ii]-bnd_tau), min(tau[ii]+bnd_tau,tau[-1])] 
+        
+    a_idx = np.append(list(range(n_states)),[-2,-1])
+    theta_a = theta0.copy()[a_idx]
+    theta_tau = theta0.copy()[n_states:-2]
+    
+    res = minimize(fun=neglogL_a, x0=theta_a, args=(theta_tau,x_weighted,marginal_weight,t,tau,topo,Ub,lambda_tau,lambda_a), method = 'L-BFGS-B' , jac = neglogL_jac_a, bounds=bound_a, options={'maxiter': miter,'disp': False}) 
+    theta_a = res.x
+    
+    if fit_tau:
+        for i in range(10):
             res = minimize(fun=neglogL_a, x0=theta_a, args=(theta_tau,x_weighted,marginal_weight,t,tau,topo,Ub,lambda_tau,lambda_a), method = 'L-BFGS-B' , jac = neglogL_jac_a, bounds=bound_a, options={'maxiter': miter,'disp': False}) 
             theta_a = res.x
+    
             res = minimize(fun=neglogL_tau, x0=theta_tau, args=(theta_a,x_weighted,marginal_weight,t,tau,topo,Ub,lambda_tau,lambda_a), method = 'L-BFGS-B' , jac = neglogL_jac_tau, bounds=bound_tau, options={'maxiter': miter,'disp': False}) 
             theta_tau = res.x
         
-        theta = np.zeros(len(theta0))
-        theta[a_idx]=theta_a
-        theta[-K-1:-2]=theta_tau  
-    else:
-        bound = [[0,bnd]]*len(theta0)
-        bound[-2:] = [[1/bnd_beta,bnd_beta]]*2
-        
-        res = minimize(fun=neglogL, x0=theta0, args=(x_weighted,marginal_weight,t,tau,topo,Ub,lambda_tau,lambda_a), method = 'L-BFGS-B' , jac = neglogL_jac, bounds=bound, options={'maxiter': miter,'disp': False}) 
-        theta = res.x
+    theta = np.zeros(len(theta0))
+    theta[a_idx]=theta_a
+    theta[n_states:-2]=theta_tau  
+    
     return theta
 
 def update_theta_j_unrestricted(theta0, x_weighted, marginal_weight, t, tau, topo, Ub, lambda_tau, lambda_a, bnd=1000, bnd_beta=1000, bnd_tau=0.5, miter=1000):
@@ -533,16 +558,18 @@ def update_theta_j_unrestricted(theta0, x_weighted, marginal_weight, t, tau, top
     n_state=len(set(topo.flatten()))
     bound = [[0,bnd]]*len(theta0)
     bound[-2:] = [[1/bnd_beta,bnd_beta]]*2
-    for ii in range(1,K):
-        bound[n_state-1+ii] = [max(tau[0],tau[ii]-bnd_tau), min(tau[ii]+bnd_tau,tau[-1])] 
+    for ii in range(K):
+        bound[n_state+ii] = [max(tau[0],tau[ii]-bnd_tau), min(tau[ii]+bnd_tau,tau[-1])] 
     
     res = minimize(fun=neglogL, x0=theta0, args=(x_weighted,marginal_weight,t,tau,topo,Ub,lambda_tau,lambda_a), method = 'L-BFGS-B' , jac = neglogL_jac, bounds=bound, options={'maxiter': miter,'disp': False}) 
     return res.x
 
-def update_theta_j_restricted(theta0, x_weighted, marginal_weight, t, tau, topo, restrictions, Ub, lambda_tau, lambda_a, bnd=1000, bnd_beta=1000, bnd_tau=0.1, miter=1000):
+def update_theta_j_restricted(theta0, x_weighted, marginal_weight, t, tau, topo, restrictions, Ub, lambda_tau, lambda_a, fit_tau=False, bnd=1000, bnd_beta=1000, bnd_tau=0.1, miter=1000):
     # define a new neglogL inside with fewer parameters
+    K = len(tau)-1 
+    n_state=len(set(topo.flatten())) 
     redundant, blanket = restrictions # 1,0 => a[1] = a[0], 0, -3 => a[0] = u_0,
-    if len(redundant) >= len(theta0) - 3:
+    if len(redundant) >= n_state-1:
         theta = np.ones(len(theta0))*np.sum(x_weighted[:,0])
         theta[-2] = 1
         theta[-1] = np.sum(x_weighted[:,0])/np.sum(x_weighted[:,1])
@@ -552,12 +579,11 @@ def update_theta_j_restricted(theta0, x_weighted, marginal_weight, t, tau, topo,
         redundant_mask[redundant] = True
         custom_theta0 = theta0[~redundant_mask]  
         
-        K = len(tau)-1 
-        n_state=len(set(topo.flatten())) 
+
         bound = [[0,bnd]]*len(custom_theta0)
         bound[-2:] = [[1/bnd_beta,bnd_beta]]*2
-        for ii in range(1,K):
-            bound[n_state-1+ii] = [max(tau[0],tau[ii]-bnd_tau), min(tau[ii]+bnd_tau,tau[-1])] 
+        for ii in range(K):
+            bound[n_state+ii] = [max(tau[0],tau[ii]-bnd_tau), min(tau[ii]+bnd_tau,tau[-1])] 
         
 
         def custom_neglogL(custom_theta, x_weighted, marginal_weight, t, tau, topo, Ub, lambda_tau, lambda_a):
@@ -574,3 +600,4 @@ def update_theta_j_restricted(theta0, x_weighted, marginal_weight, t, tau, topo,
         theta[redundant] = theta[blanket]
             
     return theta
+    

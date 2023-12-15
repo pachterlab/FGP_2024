@@ -9,7 +9,7 @@ import itertools
 import numpy as np
 from tqdm import tqdm
 from multiprocessing import Pool
-from scipy.special import logsumexp
+from scipy.special import logsumexp, softmax
 from importlib import import_module
 from scipy.optimize import minimize_scalar
 import copy
@@ -49,11 +49,35 @@ class Trajectory:
         self.guess_theta = tempmod.guess_theta
         self.check_params = tempmod.check_params
         self.get_Y_hat = tempmod.get_Y_hat
+        self.get_Y_hat_jac = tempmod.get_Y_hat_jac
         self.get_logL =  tempmod.get_logL
+        self.get_gene_logL =  tempmod.get_gene_logL
         self.update_theta_j = tempmod.update_theta_j
         del tempmod 
         
         return None
+    
+    def set_params(self,params,X):  
+        n, p = X.shape[:2]
+        if "r" in params:
+            assert len(params['r']) == n
+        else:
+            if self.verbose:
+                print("Reminder: provide cellwise read depth estimates in params with key r")
+                
+        if "Ub" in params:
+            assert len(params['Ub']) == p
+        else:
+            if self.verbose:
+                print("Reminder: provide genewise unspliced to spliced capture rate ratio in params with key Ub")
+                
+        if "lambda_tau" not in params:
+            params['lambda_tau'] = 0
+
+        if "lambda_a" not in params:
+            params['lambda_a'] = 0                    
+            
+        self.params = params
     
     def _set_time_grids(self,m):
         self.m=m
@@ -67,7 +91,7 @@ class Trajectory:
         return 
     
     def _initialize_Q(self, n):
-        Q=1+np.random.uniform(0,1,size=(n,self.L,self.m))
+        Q=np.random.uniform(0,1,size=(n,self.L,self.m))
         if self.weights is not None:
             Q *= self.weights
         Q=Q/Q.sum(axis=(-2,-1),keepdims=True)
@@ -175,7 +199,11 @@ class Trajectory:
     def normalize_Q(self, Q):
         n, L, m = np.shape(Q)
         marginal = Q.sum(axis=(0,1))
-        idx = np.where(marginal > 0.01*n/L/m)[0]
+        if self.weights is None:
+            marginal_prior = n/m
+        else:
+            marginal_prior = self.weights.sum(axis=(0,1))/self.weights.sum()
+        idx = np.where(marginal > 0.01*marginal_prior)[0]
         M = len(idx)   
         if M<m:
             if self.verbose>1:
@@ -188,7 +216,8 @@ class Trajectory:
             return new_Q
         else:
             return Q
-        
+         
+    """    
     def update_global_time_scale(self, X):
     
         def Obj(x,theta,X,t,tau,topo,params):
@@ -207,14 +236,19 @@ class Trajectory:
             temp_sum = temp.sum(axis=(-2,-1))
             lower_bound = np.mean( np.log(temp_sum) + a )
             return -lower_bound
+        
             
         res = minimize_scalar(fun=Obj, args=(self.theta,X,self.t,self.tau,self.topo,self.params), bounds=(-1, 1), method='bounded',
                               options={'maxiter': 100,'disp': False})
         self.theta[:,-2:] *= 10**res.x
         return 
+    """
     
     def update_global_tau(self, X):
-        if self.model[-3:] == "tau":
+        if self.model[-3:] == "two_species_ss_tau":
+            new_tau = self.tau.copy()
+            new_tau[:-1] = self.theta[:,self.n_states:-2].mean(0)
+            self.tau = new_tau.copy()
             return
         
         def Obj(dt,k,tau,theta,X,t,prior_tau,topo,params,lambda_tau):
@@ -275,10 +309,12 @@ class Trajectory:
         """
         
         n, p, _ = np.shape(X)
-        #lower_bound = -np.inf
+        
         lower_bounds = []
-        self.converged = False
-        self.Q_hist = []
+        #lower_bound = -np.inf
+        #self.converged = False
+        Q_hist = []
+        theta_hist = []
         
         silence = not bool(self.verbose)
         for i in tqdm(range(epoch), disable=silence):
@@ -289,7 +325,7 @@ class Trajectory:
             ### E step
             Q, lower_bound = self.update_Q(X,beta=beta)  
             lower_bounds.append(lower_bound)
-            self.Q_hist.append(Q)
+            Q_hist.append(Q)
             
             ### check converged
             #change = lower_bound - prev_lower_bound
@@ -302,13 +338,18 @@ class Trajectory:
                 Q = self.normalize_Q(Q)
            
             ### M step 
+            if i>=min(10,epoch-3):
+                self.params['fit_tau']=True
+            else:
+                self.params['fit_tau']=False
+                
             self.update_theta(X,Q,parallel=parallel,n_threads=n_threads) ### M step
-            if i>=min(10,epoch-3) and self.fit_tau:
+            if i>=min(10,epoch-3) and self.fit_global_tau:
                 self.update_global_tau(X)
                 #if self.fit_weights:
                 #    self.weights = Q.mean(axis=0,keepdims=True)
             #self.update_global_time_scale(X)
-            #self.theta_hist.append(self.theta.copy())
+            theta_hist.append(self.theta.copy())
         
         Q, lower_bound = self.update_Q(X,beta=beta)
         lower_bounds.append(lower_bound)
@@ -347,11 +388,11 @@ class Trajectory:
         """
         n, p, _ = np.shape(X)
      
-        Qs = []
         elbos = []
-        thetas = []
-        taus = []
         max_lower_bound = -np.inf
+        Qs = []
+        #thetas = []
+        #taus = []
         
         np.random.seed(seed)
         for init in range(n_init):
@@ -363,16 +404,15 @@ class Trajectory:
             Q, lower_bound = self._fit(X=X, epoch=epoch, beta=beta, parallel=parallel, n_threads=n_threads)
             theta0 = self.theta.copy()
             
-
             if lower_bound[-1] > max_lower_bound or max_lower_bound == -np.inf:
                 max_lower_bound = lower_bound[-1]
                 best_theta = self._get_theta()
                 best_Q = Q.copy()
                 best_tau = self.tau.copy()
 
-            Qs.append(Q)
             elbos.append(lower_bound)
-            thetas.append(self._get_theta())
+            Qs.append(Q)
+            #thetas.append(self._get_theta())
 
             ## For each initialization, test additional configurations 
             ## generated by permutaions of states
@@ -404,17 +444,16 @@ class Trajectory:
                     theta_perm[:,:(self.n_states)] = theta0[:,np.array(perm)]
                     self.theta = theta_perm.copy()
                     Q, lower_bound = self._fit(X=X, epoch=epoch, beta=beta, parallel=parallel, n_threads=n_threads)
-
+                    elbos.append(lower_bound)
+                    Qs.append(Q.copy())
+                    #thetas.append(self._get_theta())
+                    #taus.append(self.tau.copy())
+                    
                     if lower_bound[-1] > max_lower_bound or max_lower_bound == -np.inf:
                         max_lower_bound = lower_bound[-1]
                         best_theta = self._get_theta()
                         best_Q = Q.copy()
                         best_tau = self.tau.copy()
-
-                    Qs.append(Q.copy())
-                    elbos.append(lower_bound)
-                    thetas.append(self._get_theta())
-                    taus.append(self.tau.copy())
 
                     ## Enough additional configurations done
                     if len(configs) > 10: 
@@ -423,12 +462,12 @@ class Trajectory:
         self.theta = best_theta       
         self.tau = best_tau
         self.Qs = Qs
-        self.thetas = thetas
-        self.taus = taus
+        self.elbo = max_lower_bound
+        #self.taus = taus
             
         return [best_Q, elbos]
     
-    def fit(self, X, warm_start=False, Q=None, theta=None, prior=None, norm_Q=False, fit_tau=True, params={}, model_restrictions=None, m=100, n_init=10, perm_theta = False, epoch=100, beta=1, parallel=False, n_threads=1, seed=42):
+    def fit(self, X, warm_start=False, Q=None, theta=None, prior=None, norm_Q=True, fit_tau=None, params={}, model_restrictions=None, m=101, n_init=10, perm_theta = False, epoch=100, beta=1, parallel=False, n_threads=1, seed=42):
         """
         
 
@@ -469,28 +508,25 @@ class Trajectory:
             DESCRIPTION.
 
         """
-        self.params = params
-        self.weights = prior
-        self.norm_Q = norm_Q
-        self.fit_tau = fit_tau
+        self.set_params(params,X)
         
-        if "lambda_tau" not in params:
-            self.params['lambda_tau'] = 0
-
-        if "lambda_a" not in params:
-            self.params['lambda_a'] = 0          
-        
-        #self.check_params(self)   
-        
-        if Q is not None:
-            m = Q.shape[-1]  
+        if fit_tau is not None:
+            self.fit_global_tau = fit_tau
+        elif self.model[-3:] == "tau":
+            self.fit_global_tau = False
         else:
-            if prior is not None:
-                m = prior.shape[-1]   
-        if Q is not None:
-            assert Q.shape == (len(X),self.L,m)
-            if prior is not None:
-                assert np.broadcast(Q, prior).shape == (len(X),self.L,m)            
+            self.fit_global_tau = True
+            
+        if prior is not None:
+            m = prior.shape[-1]   
+            if Q is not None:
+                assert Q.shape == (len(X),self.L,m)
+                assert np.broadcast(Q, prior).shape == (len(X),self.L,m)
+        else:
+            if Q is not None:
+                m = Q.shape[-1]  
+        self.norm_Q = norm_Q
+        self.weights = prior
         self._set_time_grids(m)
         
         if warm_start:
@@ -536,19 +572,38 @@ class Trajectory:
             logL += - np.log(self.m) - np.log(self.L)
             
         return np.mean(logsumexp(a=logL, axis=(-2,-1)))
+        
+    def compute_gene_logL(self,X,Q):
+        n = len(X)
+        logL = self.get_gene_logL(X,self.theta,self.t,self.tau,self.topo,self.params) # with size (n,self.L,self.m,p)
+        gene_logL = np.sum(Q[:,:,:,None] * logL, axis=(0,1,2))/n
+        negKL = - np.sum(Q*np.log(Q))/n
+        
+        if self.weights is not None:
+            negKL += np.sum(Q*np.log(self.weights))/n
+        else:
+            negKL += - np.log(self.m) - np.log(self.L)
+        return gene_logL, negKL
     
-    """
-    def compute_genewise_logL(self, X):
+    def compute_FI(self, X):
+        """
+        n,p = X.shape[:2]
+        temp = np.sum((X[:,None,None,:,:,None]/Y_grids[None,:,:,:,:,None]-1)*dY_dtheta[None,:],axis=(-2)) 
+        # temp: (n,L,m,p,2,n_theta) -> (n,L,m,p,n_theta)
+        temp *= Q[:,:,:,None,None]
+        temp = np.sum(temp,axis=(1,2)) #(n,p,n_theta)
+        FI = np.sum(temp[:,:,:,None]*temp[:,:,None,:],axis=0)
         #Y = self.get_Y_hat(self.theta,self.t,self.tau,self.topo,self.params)
         #logL = np.sum(X[:,None,None,:,:]*np.log(r[:,None,None,None,None]*Y[None,:])-r[:,None,None,None,None]*Y[None,:]-gammaln(X[:,None,None,:,:]+1),axis=(-1))    
         logL = self.get_gene_logL(X,self.theta,self.t,self.tau,self.topo,self.params) # with size (n,self.L,self.m)
         gene_logL = np.sum(self.Q[:,:,:,None]*logL,axis=(0,1,2))/n
         Q_entropy = - np.sum(self.Q*np.log(self.Q+1e-10))/n
         prior_entropy = np.sum(self.Q*np.log(self.L*self.m))/n
+        """
         return None
-    """
+
     
-    def compute_AIC(self, X, standard=True):
+    def compute_AIC(self, X, standard=False):
         """
         
 
@@ -582,11 +637,11 @@ class Trajectory:
             raise ValueError('sample size too small') 
         
         if standard:
-            return  AICc
+            return  AIC
         else:
-            return -AICc/2/n
+            return -AIC/2/n
     
-    def compute_BIC(self, X, standard=True):
+    def compute_BIC(self, X, standard=False):
         """
 
         Parameters
@@ -642,7 +697,7 @@ class Trajectory:
         ##### update theta with restrictions #####
         new = copy.deepcopy(self)
         new.model_restrictions=new_model
-        new._fit(X,new.theta,epoch=1,beta=beta,parallel=parallel,n_threads=n_threads)
+        new._fit(X,new.theta,epoch=1,parallel=parallel,n_threads=n_threads)
         new_AIC = new.compute_AIC(X)
         
         ##### if the nested model is better, return True #####
@@ -652,7 +707,7 @@ class Trajectory:
         ##### else, update the whole theta and check agian #####
         else:      
             ##### update all theta with new weight #####
-            new._fit(X,new.theta,epoch=epoch,beta=beta,parallel=parallel,n_threads=n_threads)
+            new._fit(X,new.theta,epoch=epoch,parallel=parallel,n_threads=n_threads)
             new_AIC = new.compute_AIC(X)
             
             if new_AIC < ori_AIC:

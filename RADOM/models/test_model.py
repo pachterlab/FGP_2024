@@ -4,9 +4,9 @@ if __name__ == "__main__":
     import numpy as np    
 
 #%% check jac function
-    np.random.seed(2023)
-    topo = np.array([[0,1,2,3]])
-    tau=(0,1,2,3)
+    np.random.seed(2024)
+    topo = np.array([[0,1]])
+    tau=(0,1)
     n = 1000
     p = 1
     K=len(tau)-1
@@ -14,19 +14,23 @@ if __name__ == "__main__":
     n_states=len(set(topo.flatten()))
     t=np.linspace(tau[0], tau[-1], n)
     
-    loga_max=4
+    loga_mu=2
+    loga_sd=1
     logb_mu=1
-    logb_var=1
+    logb_sd=0.5
     
     ### change this when changing models ###
-    from two_species_ss_tau import check_params, guess_theta, get_Y_hat, get_logL, update_theta_j, neglogL, neglogL_jac
-    theta=np.ones((p,n_states+K+1))
-    theta[:,:n_states]=np.exp(np.random.uniform(0,loga_max,size=(p,n_states)))-1
-    theta[:,n_states:(n_states+K-1)]=tau[1:-1]
+    from two_species_ss_tau import check_params, guess_theta, get_y, get_Y_hat, get_logL, update_theta_j, neglogL, neglogL_jac, neglogL_a, neglogL_jac_a
+    theta=np.ones((p,n_states+K+2))
+    theta[:,:n_states]=np.random.lognormal(loga_mu, loga_sd,size=(p,n_states))
+    theta[:,-2:]=np.random.lognormal(logb_mu,logb_sd,size=(p,2))
+    theta[:,:n_states]/=theta[:,-2,None]
+    theta[:,-1]/=np.exp(2)
+    
+    theta[:,n_states:-2]=tau[:-1]#+np.random.uniform(0,1,size=p)
     #theta[:,-3]=np.exp(np.random.uniform(0,loga_max,size=p))-1
-    theta[:,-2:]=np.exp(np.random.normal(logb_mu,logb_var,size=(p,2)))
-    ### change this when changing models ###
-    
+    y = get_y(theta[0], t, tau)
+    ### change this when changing models ###    
     Y_ = get_Y_hat(theta, t, tau, topo, {})[0]
     
     X = np.random.poisson(Y_)
@@ -48,14 +52,34 @@ if __name__ == "__main__":
         weight_l = Q[:,l,:]/n #n*m
         x_weighted[l] = weight_l.T@x # m*2 = m*n @ n*2
         marginal_weight[l] = weight_l.sum(axis=0)[:,None] # m*1
-
+    
     theta0 = guess_theta(X,topo,tau)
-    print(theta[0])
-    print(update_theta_j(theta0[0],x,Q,t_grids,tau,topo,params={"lambda_a":0},restrictions=None))
+    print('True theta',theta[0])
+    theta_hat = update_theta_j(0,theta0[0],x,Q,t_grids,tau,topo,params={"lambda_a":0},restrictions=None)
+    print('Estimated theta',theta_hat)
+    a_idx = np.append(list(range(n_states)),[-2,-1])
+    theta_a = theta_hat[a_idx]
+    theta_tau = theta_hat[n_states:-2]
     #print(update_theta_j(theta0[0],x,Q,t_grids,tau,topo,params={"lambda_a":1e-4,"lambda_tau":1},restrictions=[[3],[2]]))
-    print(check_grad(neglogL, neglogL_jac, theta[0], x_weighted, marginal_weight, t_grids, tau, topo, 0))
-    approx_fprime(theta[0], neglogL, 1e-10, x_weighted, marginal_weight, t_grids, tau, topo, 1)
-    neglogL_jac(theta[0], x_weighted, marginal_weight, t_grids, tau, topo, 1)
+    print(check_grad(neglogL_a, neglogL_jac_a, theta_a, theta_tau, x_weighted, marginal_weight, t_grids, tau, topo, 1))
+    approx_fprime(theta_hat, neglogL, 1e-6, x_weighted, marginal_weight, t_grids, tau, topo, 1)
+    neglogL_a(theta_a, theta_tau,  x_weighted, marginal_weight, t_grids, tau, topo, 1)
+    neglogL(theta_hat, x_weighted, marginal_weight, t_grids, tau, topo, 1)
+    y_hat = get_y(theta_hat, t, tau)
+    
+    from two_species_ss import check_params, guess_theta, get_y, get_Y_hat, get_logL, update_theta_j, neglogL, neglogL_jac
+    print(check_grad(neglogL, neglogL_jac, theta_a,x_weighted, marginal_weight, t_grids, tau, topo, 1))
+    neglogL(theta_a, x_weighted, marginal_weight, t_grids, tau, topo, 1)
+    
+    fig, ax = plt.subplots(1,2,figsize=(12,4))
+    ax[0].plot(t,x[:,0],'k.')
+    ax[0].plot(t,y[:,0],'r')
+    ax[0].plot(t,y_hat[:,0],'b')
+    
+    ax[1].plot(t,x[:,1],'k.')
+    ax[1].plot(t,y[:,1],'r')
+    ax[1].plot(t,y_hat[:,1],'b')
+
     
 #%%
    

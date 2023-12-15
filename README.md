@@ -6,9 +6,9 @@
  
 * `RADOM/`: a python package that implement the fitting
   * `models/`: 
-    * `two_species.py`: 
+    * `two_species_ss.py`:
+    * `two_species_ss.py`: 
     * `one_species.py`: 
-    * `bursty.py`: 
   * `inference.py`: Define the Trajectory class
 
 * `notebooks/`: 
