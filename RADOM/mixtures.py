@@ -24,7 +24,7 @@ class PoissonMixtureSS:
     ----------
     n_components : int, number of mixtures, default=1
     theta : ndarray of shape (p, n_components + n_species-1). 
-            e.g., Means of S and U/S ratio of each gene.
+            e.g., Means of U and S/U ratio of each gene.
     weights : ndarray of shape (n_components,). Weights of each mixture as in GMM.
     """
 
@@ -44,6 +44,8 @@ class PoissonMixtureSS:
     
     def _m_step(self,X,Q):
         n, p, n_species = X.shape
+        self.weights = eps+np.sum(Q,axis=0)
+        self.weights /= self.weights.sum()   
         self.theta = np.zeros((p,self.n_components + n_species - 1))
         self.theta[:,self.n_components:] = (Q[:,None,None,:]*X[:,:,1:,None]).mean(axis=(0,-1))/(Q[:,None,:]*X[:,:,0,None]).mean(axis=(0,-1))[:,None]
         gamma = np.ones((p,n_species))
@@ -65,9 +67,10 @@ class PoissonMixtureSS:
    
     def _fit(self, X, epoch):
         silence = not bool(self.verbose)
+        Q, lower_bound = self._e_step(X)  
         for i in tqdm(range(epoch), disable=silence):
-            Q, lower_bound = self._e_step(X)  
             self._m_step(X, Q)
+            Q, lower_bound = self._e_step(X)  
         return Q, lower_bound
         
     def fit(self, X, warm_start, Q=None, theta=None, weights=None, read_depth=None, n_init=10, epoch=100, seed=42):
@@ -138,28 +141,43 @@ class PoissonMixtureSS:
                     best_Q = Q
     
             self.theta, self.weights = best_params
+        self.Q = best_Q
+        self.X = X
+        self.elbo = max_lower_bound
         return best_Q, max_lower_bound
 
-    
     def compute_lower_bound(self,X):
         Q, lower_bound = self._e_step(X)
         return lower_bound
+
+    def compute_gene_logL(self,X,Q):
+        n, p, n_species = X.shape
+        gamma = np.ones((p,n_species))
+        gamma[:,1:] = self.theta[:,self.n_components:]
+        # n * p * n_components
+        logL = np.sum(poisson.logpmf(k=X[:,:,:,None],\
+                                     mu=self.rd[:,None,None,None] * self.theta[None,:,None,:self.n_components] * gamma[None,:,:,None]), axis=(2))
+        Q_temp = Q + 1e-6
+        gene_logL = np.sum(Q[:,None,:] * logL,axis=(0,2))/n
+        negKL = - np.sum(Q * np.log(Q_temp/self.weights[None,:]))/n
+        return gene_logL, negKL
     
-    def compute_AIC(self, X, normalized=True):
+    def compute_AIC(self, X, standard=False):
         n, p, s = np.shape(X)
         self.n_parameters = self.theta.size + self.n_components - 1      
-        if normalized:
-            return self.compute_lower_bound(X) - self.n_parameters/n
-        else:
+        if standard:
             return -2*n*self.compute_lower_bound(X) + 2 * self.n_parameters
+        else:
+            return self.compute_lower_bound(X) - self.n_parameters/n
             
-    def compute_BIC(self, X, normalized=True):
+            
+    def compute_BIC(self, X, standard=False):
         n, p, s = np.shape(X)
         self.n_parameters = self.theta.size + self.n_components - 1      
-        if normalized:
-            return self.compute_lower_bound(X) - self.n_parameters * np.log(n) / (2*n)
-        else:
+        if standard:
             return -2*n*self.compute_lower_bound(X) + self.n_parameters * np.log(n)
+        else:
+            return self.compute_lower_bound(X) - self.n_parameters * np.log(n) / (2*n)
 
 
 class PoissonMixture:
@@ -301,23 +319,21 @@ class PoissonMixture:
         logL += np.log(self.weights)[None,:]
         return logsumexp(a=logL, axis=1)
     
-    def compute_AIC(self, X, normalized=True):
+    def compute_AIC(self, X, standard=False):
         n, p, s = np.shape(X)
         self.n_parameters = self.theta.size + self.n_components - 1      
-        if normalized:
-            return self.compute_lower_bound(X) - self.n_parameters/n
-        else:
+        if standard:
             return -2*n*self.compute_lower_bound(X) + 2 * self.n_parameters
+        else:
+            return self.compute_lower_bound(X) - self.n_parameters/n  
             
-    def compute_BIC(self, X, normalized=True):
+    def compute_BIC(self, X, standard=False):
         n, p, s = np.shape(X)
         self.n_parameters = self.theta.size + self.n_components - 1      
-        if normalized:
-            return self.compute_lower_bound(X) - self.n_parameters * np.log(n) / (2*n)
-        else:
+        if standard:
             return -2*n*self.compute_lower_bound(X) + self.n_parameters * np.log(n)
-
-
+        else:
+            return self.compute_lower_bound(X) - self.n_parameters * np.log(n) / (2*n)
 
 class GammaPoissonMixture:
     """
@@ -504,22 +520,22 @@ class GammaPoissonMixture:
         lower_bound = np.mean( np.log(relative_L_sum) + a )
         return lower_bound
     
-    def compute_AIC(self, X, normalized=True):
+    def compute_AIC(self, X, standard=False):
         n, p, s = np.shape(X)
-        self.n_parameters = self.theta.size + 2 * self.n_components - 1      
-        if normalized:
-            return self.compute_lower_bound(X) - self.n_parameters/n
-        else:
+        self.n_parameters = self.theta.size + 2 * self.n_components - 1          
+        if standard:
             return -2*n*self.compute_lower_bound(X) + 2 * self.n_parameters
-            
-    
-    def compute_BIC(self, X, normalized=True):
-        n, p, s = np.shape(X)
-        self.n_parameters = self.theta.size + 2 * self.n_components - 1      
-        if normalized:
-            return self.compute_lower_bound(X) - self.n_parameters * np.log(n) / (2*n)
         else:
+            return self.compute_lower_bound(X) - self.n_parameters/n
+                
+    def compute_BIC(self, X, standard=False):
+        n, p, s = np.shape(X)
+        self.n_parameters = self.theta.size + 2 * self.n_components - 1       
+        if standard:
             return -2*n*self.compute_lower_bound(X) + self.n_parameters * np.log(n)
+        else:
+            return self.compute_lower_bound(X) - self.n_parameters * np.log(n) / (2*n)
+            
 
 class NBMixture:
     """
