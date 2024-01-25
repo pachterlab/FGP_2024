@@ -1,5 +1,5 @@
 # Introduction
-This repository contains code to generate results in the manuscript [Meichen Fang, Gennady Gorin, Lior Pachter (2024)](https:).
+This repository contains code for reproducing the figures and results in the preprint [Meichen Fang, Gennady Gorin, Lior Pachter (2024)](https:).
 
 # Repository Contents
  
