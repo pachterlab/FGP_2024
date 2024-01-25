@@ -10,8 +10,8 @@ from math import log
 import numpy as np
 import anndata as ad 
 from importlib import import_module
-import RADOM.models.two_species_ss as two_species_ss
-import RADOM.models.two_species_ss_tau as two_species_ss_tau
+import Chronocell.models.two_species_ss as two_species_ss
+import Chronocell.models.two_species_ss_tau as two_species_ss_tau
 
 def simulate_data(topo, tau, n, p, model="two_species_ss", loga_mu=2, loga_sd=1, logb_mu=1, logb_sd=0.5, rd_mu=0.25, rd_var=0, logu_mu=0, logu_sd=0, random_seed=42):    
     np.random.seed(random_seed)
