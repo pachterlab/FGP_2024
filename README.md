@@ -1,19 +1,20 @@
 # Introduction
+This repository contains code for reproducing the figures and results in the preprint [Meichen Fang, Gennady Gorin, Lior Pachter (2024)](https:).
 
 # Repository Contents
-
-* `data/`: All pre-computed simulations and real datasets.
  
 * `RADOM/`: a python package that implement the fitting
   * `models/`: 
     * `two_species_ss.py`:
-    * `two_species_ss.py`: 
+    * `two_species_ss_tau.py`: 
     * `one_species.py`: 
   * `inference.py`: Define the Trajectory class
 
-* `notebooks/`: 
-  * `demos.ipynb`:
-  * `simulations.ipynb`:
-  * `noise_model.ipynb`:
+* `simulations/`: notebooks for simulations.
+
+* `notebooks/`: notebooks to perform all analyses on real datasets.
   * `forebrain.ipynb`:
-  * `Barile.ipynb`:this is the same dataset as the scvel.datasets.gastrulation_erythroid
+  * `erythroid.ipynb`:
+  * `rpe1.ipynb`:
+  * `PBMC.ipynb`:
+  * `Neuron.ipynb`:
