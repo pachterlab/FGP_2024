@@ -4,17 +4,18 @@ This repository contains code for reproducing the figures and results in the pre
 # Repository Contents
  
 * `Chronocell/`: a python package that implement the fitting
-  * `models/`: 
-    * `two_species_ss.py`:
-    * `two_species_ss_tau.py`: 
-    * `one_species.py`: 
-  * `inference.py`: Define the Trajectory class
+  * `inference.py`: contains the `Trajectory` class and methods for fitting.
+  * `mixtures.py`: contains the code and classes for Poisson mixture model.
+  * `models/`: contains the model specific functions to calculate log likelihood and optimize parameters.
+  * `simulation.py`: contains the code for generating simulations.
+  * `plotting.py`: contains some convenient but not essential functions for plotting.
+  * `utils.py`: contains some helper functions.
 
 * `simulations/`: notebooks to perform analyses on simulations.
 
 * `notebooks/`: notebooks to perform analyses on real datasets.
-  * `forebrain.ipynb`:
-  * `erythroid.ipynb`:
-  * `rpe1.ipynb`:
-  * `PBMC.ipynb`:
-  * `Neuron.ipynb`:
+  * `forebrain.ipynb`
+  * `erythroid.ipynb`
+  * `rpe1.ipynb`
+  * `PBMC.ipynb`
+  * `Neuron.ipynb`
