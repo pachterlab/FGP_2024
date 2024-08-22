@@ -42,18 +42,22 @@ class Trajectory:
         self.model_restrictions=restrictions
         self.model=model
         self.verbose = verbose
-        
-        ## import model specific methods from the provided file
-        tempmod = import_module("RADOM.models."+model)
-        #tempmod = import_module(".models."+model,"RADOM")
-        self.guess_theta = tempmod.guess_theta
-        self.check_params = tempmod.check_params
-        self.get_Y_hat = tempmod.get_Y_hat
-        self.get_Y_hat_jac = tempmod.get_Y_hat_jac
-        self.get_logL =  tempmod.get_logL
-        self.get_gene_logL =  tempmod.get_gene_logL
-        self.update_theta_j = tempmod.update_theta_j
-        del tempmod 
+
+        try:
+            # Use a relative import path for importing the module
+            tempmod = import_module(".models." + model, package=__package__)
+            
+            # Assign methods to the current object's attributes
+            self.guess_theta = tempmod.guess_theta
+            self.check_params = tempmod.check_params
+            self.get_Y_hat = tempmod.get_Y_hat
+            self.get_Y_hat_jac = tempmod.get_Y_hat_jac
+            self.get_logL = tempmod.get_logL
+            self.get_gene_logL = tempmod.get_gene_logL
+            self.update_theta_j = tempmod.update_theta_j
+        finally:
+            # Clean up
+            del tempmod
         
         return None
     
@@ -65,11 +69,12 @@ class Trajectory:
             if self.verbose:
                 print("Reminder: provide cellwise read depth estimates in params with key r")
                 
-        if "Ub" in params:
-            assert len(params['Ub']) == p
-        else:
-            if self.verbose:
-                print("Reminder: provide genewise unspliced to spliced capture rate ratio in params with key Ub")
+        ##### length bias of unspliced counts #####
+        #if "Ub" in params:
+        #    assert len(params['Ub']) == p
+        #else:
+        #    if self.verbose:
+        #        print("Reminder: provide genewise unspliced to spliced capture rate ratio in params with key Ub")
                 
         if "lambda_tau" not in params:
             params['lambda_tau'] = 0
@@ -113,12 +118,6 @@ class Trajectory:
             DESCRIPTION. The default is False.
         n_threads : TYPE, optional
             DESCRIPTION. The default is 1.
-        bnd : TYPE, optional
-            DESCRIPTION. The default is 1000.
-        bnd_beta : TYPE, optional
-            DESCRIPTION. The default is 100.
-        miter : TYPE, optional
-            DESCRIPTION. The default is 1000.
 
         Returns
         -------

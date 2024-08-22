@@ -18,17 +18,41 @@ Omega = 1e6
 
 class PoissonMixtureSS:
     """
-    Poisson mixture steady state model
+    Poisson mixture steady state model.
+
+    This model assumes that gene expression data can be described as a mixture of 
+    multiple Poisson distributions. Each mixture component represents a different 
+    steady state, characterized by a distinct mean expression level for unspliced 
+    (U) transcripts. However, all components share the same spliced/unspliced
+    ratio, reflecting a common relationship between the rates of degradation and 
+    splicing across the different steady states.
 
     Attributes
     ----------
-    n_components : int, number of mixtures, default=1
-    theta : ndarray of shape (p, n_components + n_species-1). 
-            e.g., Means of U and S/U ratio of each gene.
-    weights : ndarray of shape (n_components,). Weights of each mixture as in GMM.
+    n_components : int
+        Number of mixture components (default is 1).
+    theta : ndarray of shape (p, n_components + n_species - 1)
+        Parameter array, where `p` is the number of genes and `n_species` is the 
+        number of species (typically 2 for U and S). For each gene, this includes 
+        the mean of the first species (usually unspliced) transcripts for each mixture component and 
+        shared species ratios (for example S/U) across all components.
+    weights : ndarray of shape (n_components,)
+        Mixture weights for each component, similar to those in a Gaussian Mixture Model (GMM).
+    verbose : int
+        Level of verbosity. 0 for silence and 1 for talkative mode.
     """
-
+    
     def __init__(self, n_components=1, verbose=0):
+        """
+        Initialize the PoissonMixtureSS model.
+
+        Parameters
+        ----------
+        n_components : int, optional
+            The number of mixture components, by default 1.
+        verbose : int, optional
+            Level of verbosity. 0 for silence and 1 for talkative mode.
+        """
         self.n_components = n_components
         self.verbose = verbose    
         return
