@@ -370,24 +370,18 @@ def update_theta_j(j, theta0, x, Q, t, tau, topo, params=None, restrictions=None
     if 'miter' in params:
         miter = params['miter']
     else:
-        miter=100
-
-    if 'batch_size' in params:
-        x_idx = np.random.choice(n,params['batch_size'],replace=False)
-    else:
-        x_idx = np.arange(n)
-        
+        miter=100        
             
     if 'r' in params:
         r = params['r'] # n
         for l in range(len(topo)):
-            weight_l = Q[x_idx,l,:]/len(x_idx) #n*m
-            x_weighted[l] = weight_l.T@x[x_idx] # m*2 = m*n @ n*2
-            marginal_weight[l] =  (weight_l*r[x_idx,None]).sum(axis=0)[:,None] # m*1
+            weight_l = Q[:,l,:]/n #n*m
+            x_weighted[l] = weight_l.T@x # m*2 = m*n @ n*2
+            marginal_weight[l] =  (weight_l*r[:,None]).sum(axis=0)[:,None] # m*1
     else:
         for l in range(len(topo)):
-            weight_l = Q[x_idx,l,:]/len(x_idx) #n*m
-            x_weighted[l] = weight_l.T@x[x_idx] # m*2 = m*n @ n*2
+            weight_l = Q[:,l,:]/n #n*m
+            x_weighted[l] = weight_l.T@x # m*2 = m*n @ n*2
             marginal_weight[l] = weight_l.sum(axis=0)[:,None] # m*1
 
     n_states=len(set(topo.flatten()))
@@ -471,7 +465,6 @@ def update_theta_j_restricted(theta0, x_weighted, marginal_weight, t, tau, topo,
                
             return neglogL(theta, x_weighted, marginal_weight, t, tau, topo, Ub, lambda_a)
             
-       
 
         res = minimize(fun=custom_neglogL, x0=custom_theta0, args=(x_weighted,marginal_weight,t,tau,topo,Ub,lambda_a), method = 'L-BFGS-B' , jac = None, bounds=bound, options={'maxiter': miter,'disp': False}) 
 

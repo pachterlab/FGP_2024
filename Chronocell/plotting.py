@@ -18,6 +18,9 @@ cmap_Q = cmr.get_sub_cmap('Greys', 0, 1)
 cmap_t = cmr.get_sub_cmap('Greys', 0, 1)
 cmap_ts = [cmr.get_sub_cmap('Blues', 0.2, 1), cmr.get_sub_cmap('Reds', 0.2, 1),cmr.get_sub_cmap('Purples', 0.2, 1), cmr.get_sub_cmap('Greens', 0.2, 1)]
 
+def norm(x):
+    return (x-np.min(x))/(np.max(x)-np.min(x))
+
 def AE(y_pred, y_true):
     return np.abs(y_pred - y_true).mean()
     

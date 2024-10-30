@@ -5,8 +5,9 @@ from .utils import *
 from .simulation import *
 
 
-__version__ = "2023.09.01"
+__version__ = "2024.10"
 
+# 2024.10: (1) change normlize_Q by normlizing per lineage; (2) add store_info option and harmonize elbos and remove Q_hist. Now elbos record the elbo along epoch and all_elbos record elbos of all initialization if store_info is true.
 # 2023.09.01: add compute_gene_logL
 # 2023.08.16: change init_Q by removing one added
 # 2023.08.14: change initial beta and gamma to ratio and one

@@ -414,22 +414,17 @@ def update_theta_j(j, theta0, x, Q, t, tau, topo, params, restrictions=None):
         miter = params['miter']
     else:
         miter=100
-
-    if 'batch_size' in params:
-        x_idx = np.random.choice(n,params['batch_size'],replace=False)
-    else:
-        x_idx = np.arange(n)
         
     if 'r' in params:
         r = params['r'] # n
         for l in range(len(topo)):
-            weight_l = Q[x_idx,l,:]/len(x_idx) #n*m
-            x_weighted[l] = weight_l.T@x[x_idx] # m*2 = m*n @ n*2
-            marginal_weight[l] =  (weight_l*r[x_idx,None]).sum(axis=0)[:,None] # m*1
+            weight_l = Q[:,l,:]/n #n*m
+            x_weighted[l] = weight_l.T@x # m*2 = m*n @ n*2
+            marginal_weight[l] =  (weight_l*r[:,None]).sum(axis=0)[:,None] # m*1
     else:
         for l in range(len(topo)):
-            weight_l = Q[x_idx,l,:]/len(x_idx) #n*m
-            x_weighted[l] = weight_l.T@x[x_idx] # m*2 = m*n @ n*2
+            weight_l = Q[:,l,:]/n #n*m
+            x_weighted[l] = weight_l.T@x # m*2 = m*n @ n*2
             marginal_weight[l] = weight_l.sum(axis=0)[:,None] # m*1
             
     n_states=len(set(topo.flatten()))
@@ -450,19 +445,19 @@ def update_theta_j(j, theta0, x, Q, t, tau, topo, params, restrictions=None):
     else:
         lambda_a = 0
         
-    if "fit_tau" in params:
-        fit_tau = params['fit_tau']
+    if "fit_gene_tau" in params:
+        fit_gene_tau = params['fit_gene_tau']
     else:
-        fit_tau = False
+        fit_gene_tau = False
         
     if restrictions==None:
-        res = update_theta_j_unrestricted_alternative(theta00, x_weighted, marginal_weight, t, tau, topo, Ub, lambda_tau, lambda_a, fit_tau, bnd, bnd_beta, bnd_tau, miter)
+        res = update_theta_j_unrestricted_alternative(theta00, x_weighted, marginal_weight, t, tau, topo, Ub, lambda_tau, lambda_a, fit_gene_tau, bnd, bnd_beta, bnd_tau, miter)
     else:
-        res = update_theta_j_restricted(theta00, x_weighted, marginal_weight, t, tau, topo, restrictions, Ub, lambda_tau, lambda_a, fit_tau, bnd, bnd_beta, bnd_tau, miter)
+        res = update_theta_j_restricted(theta00, x_weighted, marginal_weight, t, tau, topo, restrictions, Ub, lambda_tau, lambda_a, fit_gene_tau, bnd, bnd_beta, bnd_tau, miter)
     return res
 
 
-def update_theta_j_unrestricted_alternative(theta0, x_weighted, marginal_weight, t, tau, topo, Ub, lambda_tau, lambda_a, fit_tau=False, bnd=1000, bnd_beta=1000, bnd_tau=0.5, miter=100):
+def update_theta_j_unrestricted_alternative(theta0, x_weighted, marginal_weight, t, tau, topo, Ub, lambda_tau, lambda_a, fit_gene_tau=False, bnd=1000, bnd_beta=1000, bnd_tau=0.5, miter=100):
     """
     with jac
 
@@ -509,7 +504,7 @@ def update_theta_j_unrestricted_alternative(theta0, x_weighted, marginal_weight,
     res = minimize(fun=neglogL_a, x0=theta_a, args=(theta_tau,x_weighted,marginal_weight,t,tau,topo,Ub,lambda_tau,lambda_a), method = 'L-BFGS-B' , jac = neglogL_jac_a, bounds=bound_a, options={'maxiter': miter,'disp': False}) 
     theta_a = res.x
     
-    if fit_tau:
+    if fit_gene_tau:
         for i in range(10):
             res = minimize(fun=neglogL_a, x0=theta_a, args=(theta_tau,x_weighted,marginal_weight,t,tau,topo,Ub,lambda_tau,lambda_a), method = 'L-BFGS-B' , jac = neglogL_jac_a, bounds=bound_a, options={'maxiter': miter,'disp': False}) 
             theta_a = res.x
@@ -564,7 +559,7 @@ def update_theta_j_unrestricted(theta0, x_weighted, marginal_weight, t, tau, top
     res = minimize(fun=neglogL, x0=theta0, args=(x_weighted,marginal_weight,t,tau,topo,Ub,lambda_tau,lambda_a), method = 'L-BFGS-B' , jac = neglogL_jac, bounds=bound, options={'maxiter': miter,'disp': False}) 
     return res.x
 
-def update_theta_j_restricted(theta0, x_weighted, marginal_weight, t, tau, topo, restrictions, Ub, lambda_tau, lambda_a, fit_tau=False, bnd=1000, bnd_beta=1000, bnd_tau=0.1, miter=1000):
+def update_theta_j_restricted(theta0, x_weighted, marginal_weight, t, tau, topo, restrictions, Ub, lambda_tau, lambda_a, fit_gene_tau=False, bnd=1000, bnd_beta=1000, bnd_tau=0.1, miter=1000):
     # define a new neglogL inside with fewer parameters
     K = len(tau)-1 
     n_state=len(set(topo.flatten())) 
