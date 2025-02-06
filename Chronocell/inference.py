@@ -210,6 +210,9 @@ class Trajectory:
         Q = relative_L/relative_L_sum[:,None,None]
         lower_bound = np.mean( np.log(relative_L_sum) + a )
         
+        assert not np.any(np.isnan(Q)), "Q contains NaN values"
+        assert not np.any(np.isinf(Q)), "Q contains Inf values"
+        
         return Q, lower_bound
         
     def normalize_Q(self, Q):
