@@ -1,9 +1,9 @@
 # Introduction
-This repository contains code for reproducing the figures and results in the preprint [Meichen Fang, Gennady Gorin, Lior Pachter (2024)]([https:](https://www.biorxiv.org/content/10.1101/2024.01.26.577510v2)).
+This repository contains code for reproducing the figures and results in the paper [Meichen Fang, Gennady Gorin, Lior Pachter (2025)]([https:](https://doi.org/10.1371/journal.pcbi.1012752)). 
 
 # Repository Contents
  
-* `Chronocell/`: a python package that implement the fitting
+* `Chronocell/`: A Python package that implements the fitting procedures. The core code for the package is maintained in a separate repository https://github.com/pachterlab/Chronocell. A copy is included here for completeness. 
   * `inference.py`: contains the `Trajectory` class and methods for fitting.
   * `mixtures.py`: contains the code and classes for Poisson mixture model.
   * `models/`: contains the model specific functions to calculate log likelihood and optimize parameters.
