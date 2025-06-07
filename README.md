@@ -1,5 +1,5 @@
 # Introduction
-This repository contains code for reproducing the figures and results in the paper [Meichen Fang, Gennady Gorin, Lior Pachter (2025)]([https:](https://doi.org/10.1371/journal.pcbi.1012752)). 
+This repository contains code for reproducing the figures and results in the paper [Meichen Fang, Gennady Gorin, Lior Pachter (2025)](https://doi.org/10.1371/journal.pcbi.1012752). 
 
 # Repository Contents
  
